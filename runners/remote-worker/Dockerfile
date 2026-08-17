@@ -30,8 +30,16 @@
 #   - Playwright + a baked chromium — validation runs author and execute
 #     e2e specs against the deployed system and must never download a
 #     browser at task time.
+#
+# Ballerina fetch: `BALLERINA_FETCH=download` (default, CI) curls inside the
+# build. `BALLERINA_FETCH=prefetch` unpacks a zip supplied as the named
+# context `ballerina` (build-runner.sh downloads it on the host — Docker's
+# IPv6 path to GitHub often SSL-times-out while the host does not).
 
-FROM node:22-bookworm-slim
+ARG BALLERINA_FETCH=download
+ARG BALLERINA_VERSION=2201.13.5
+
+FROM node:22-bookworm-slim AS toolchain
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -41,7 +49,7 @@ RUN apt-get update \
         python3 \
         unzip \
         ca-certificates \
-    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    && curl -4 -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
         > /etc/apt/sources.list.d/github-cli.list \
@@ -53,7 +61,7 @@ RUN apt-get update \
 # was unpinned, so the toolchain the agent verified against could drift
 # under it between rebuilds.
 ARG GO_VERSION=1.25.5
-RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz" \
+RUN curl -4 -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz" \
     | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
 
@@ -72,20 +80,54 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 # "…-swan-lake-linux-arm" (the .deb spells the latter "linux-arm-x64" — the
 # zip does not). Both exist for every release; the GitHub release *page*
 # renders only the x64 rows, so read the asset list via the API, not the page.
-ARG BALLERINA_VERSION=2201.13.5
+
+FROM toolchain AS ballerina-download
+ARG BALLERINA_VERSION
+# GitHub resets large anonymous release downloads (~150s). Resume inside this
+# RUN so a partial zip survives; pass a PAT as BuildKit secret `gh_token` when
+# one is available. -4: Docker's IPv6 path to GitHub often SSL-times-out.
+RUN --mount=type=secret,id=gh_token,required=false \
+    case "$(dpkg --print-architecture)" in \
+        amd64) BAL_ARCH="linux" ;; \
+        arm64) BAL_ARCH="linux-arm" ;; \
+        *) echo "no Ballerina distribution for $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac \
+    && BAL_DIR="ballerina-${BALLERINA_VERSION}-swan-lake-${BAL_ARCH}" \
+    && BAL_URL="https://github.com/ballerina-platform/ballerina-distribution/releases/download/v${BALLERINA_VERSION}/${BAL_DIR}.zip" \
+    && AUTH_HEADER="" \
+    && if [ -f /run/secrets/gh_token ]; then AUTH_HEADER="Authorization: Bearer $(cat /run/secrets/gh_token)"; fi \
+    && i=0 \
+    && until curl -4 -fL --connect-timeout 20 ${AUTH_HEADER:+-H "$AUTH_HEADER"} -C - -o /tmp/ballerina.zip "$BAL_URL" \
+            && unzip -t /tmp/ballerina.zip >/dev/null; do \
+           i=$((i + 1)); \
+           if [ "$i" -ge 40 ]; then echo "ballerina download failed after $i attempts" >&2; exit 1; fi; \
+           echo "ballerina zip incomplete (attempt $i) — resuming in 5s..."; \
+           sleep 5; \
+       done \
+    && unzip -q /tmp/ballerina.zip -d /usr/lib \
+    && mv "/usr/lib/${BAL_DIR}" /usr/lib/ballerina \
+    && rm /tmp/ballerina.zip \
+    && chmod -R a+rX /usr/lib/ballerina
+
+FROM toolchain AS ballerina-prefetch
+ARG BALLERINA_VERSION
+COPY --from=ballerina ballerina.zip /tmp/ballerina.zip
 RUN case "$(dpkg --print-architecture)" in \
         amd64) BAL_ARCH="linux" ;; \
         arm64) BAL_ARCH="linux-arm" ;; \
         *) echo "no Ballerina distribution for $(dpkg --print-architecture)" >&2; exit 1 ;; \
     esac \
     && BAL_DIR="ballerina-${BALLERINA_VERSION}-swan-lake-${BAL_ARCH}" \
-    && curl -fsSL -o /tmp/ballerina.zip \
-        "https://github.com/ballerina-platform/ballerina-distribution/releases/download/v${BALLERINA_VERSION}/${BAL_DIR}.zip" \
     && unzip -q /tmp/ballerina.zip -d /usr/lib \
     && mv "/usr/lib/${BAL_DIR}" /usr/lib/ballerina \
     && rm /tmp/ballerina.zip \
     && chmod -R a+rX /usr/lib/ballerina
+
+ARG BALLERINA_FETCH=download
+FROM ballerina-${BALLERINA_FETCH} AS with-ballerina
 ENV PATH="/usr/lib/ballerina/bin:${PATH}"
+
+FROM with-ballerina
 
 # Playwright toolchain, pinned as a pair: AEP_PLAYWRIGHT_VERSION is the
 # contract the aep-validation skill pins tests/e2e/package.json to, so

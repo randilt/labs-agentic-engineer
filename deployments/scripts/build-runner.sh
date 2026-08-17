@@ -44,6 +44,41 @@ source "$SCRIPT_DIR/utils.sh"
 IMAGE="${AGENT_RUNNER_IMAGE:-aep-runner:dev}"
 WORKER_DIR="$SCRIPT_DIR/../../runners/remote-worker"
 DOCKERFILE="$WORKER_DIR/Dockerfile"
+BALLERINA_VERSION="${BALLERINA_VERSION:-2201.13.5}"
+
+# Download the Ballerina zip on the HOST (IPv4, resume) and return a directory
+# containing ballerina.zip for `--build-context ballerina=...`. Docker's build
+# network often SSL-times-out to GitHub at 0%; the host path usually works.
+prefetch_ballerina_zip() {
+    local pat="$1"
+    local arch
+    case "$(uname -m)" in
+        x86_64|amd64) arch=linux ;;
+        aarch64|arm64) arch=linux-arm ;;
+        *) echo "❌ no Ballerina zip for $(uname -m)" >&2; return 1 ;;
+    esac
+    local cache="${XDG_CACHE_HOME:-$HOME/.cache}/aep-runner"
+    mkdir -p "$cache"
+    local zip="$cache/ballerina-${BALLERINA_VERSION}-swan-lake-${arch}.zip"
+    local url="https://github.com/ballerina-platform/ballerina-distribution/releases/download/v${BALLERINA_VERSION}/ballerina-${BALLERINA_VERSION}-swan-lake-${arch}.zip"
+    if unzip -t "$zip" >/dev/null 2>&1; then
+        echo "   using cached Ballerina zip ($zip)" >&2
+    else
+        echo "   downloading Ballerina ${BALLERINA_VERSION} on the host (IPv4, resume)" >&2
+        echo "   → $zip" >&2
+        local auth=()
+        if [ -n "$pat" ]; then
+            auth=(-H "Authorization: Bearer $pat")
+        fi
+        curl -4 -fL --connect-timeout 20 -C - --retry 20 --retry-all-errors --retry-delay 2 \
+            "${auth[@]}" --progress-bar -o "$zip" "$url"
+        unzip -t "$zip" >/dev/null
+    fi
+    local stage
+    stage="$(mktemp -d "${TMPDIR:-/tmp}/aep-ballerina-ctx.XXXXXX")"
+    cp -a "$zip" "$stage/ballerina.zip"
+    printf '%s\n' "$stage"
+}
 
 if [ "${FORCE:-0}" = "1" ] || ! docker image inspect "$IMAGE" &>/dev/null; then
     echo "🐳 Building runner image ($IMAGE)..."
@@ -58,9 +93,31 @@ if [ "${FORCE:-0}" = "1" ] || ! docker image inspect "$IMAGE" &>/dev/null; then
     # --build-context skills=<repo>/skills: the authored skill library lives at
     # the repo root, outside this image's build context, and the runner bakes it
     # at /app/skills (see the Dockerfile). Same mechanism aep-api uses.
+    # gh_token: GitHub PAT so the Ballerina zip fetch is authenticated. Anonymous
+    # release downloads get RST'd around 150s on slow links; a PAT usually does not.
+    secret_args=()
+    pat="${LOCAL_DEV_ADMIN_GITHUB_PAT:-}"
+    if [ -z "$pat" ] && [ -f "$SCRIPT_DIR/../.env" ]; then
+        pat=$(grep -E '^LOCAL_DEV_ADMIN_GITHUB_PAT=' "$SCRIPT_DIR/../.env" | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+    fi
+    if [ -n "$pat" ]; then
+        export LOCAL_DEV_ADMIN_GITHUB_PAT="$pat"
+        secret_args=(--secret id=gh_token,env=LOCAL_DEV_ADMIN_GITHUB_PAT)
+        echo "   using GitHub PAT for the Ballerina download"
+    else
+        echo "   no LOCAL_DEV_ADMIN_GITHUB_PAT — Ballerina zip is anonymous (slow links often RST)"
+    fi
+
+    # Host-side fetch: Docker's IPv6 path to GitHub SSL-times-out (0% forever).
+    # curl -4 -C - on the host, then unpack via BALLERINA_FETCH=prefetch.
+    ballerina_ctx="$(prefetch_ballerina_zip "$pat")"
     docker build --provenance=false --sbom=false \
+        --build-arg BALLERINA_FETCH=prefetch \
         --build-context "skills=$SCRIPT_DIR/../../skills" \
+        --build-context "ballerina=$ballerina_ctx" \
+        "${secret_args[@]}" \
         -f "$DOCKERFILE" -t "$IMAGE" "$WORKER_DIR"
+    rm -rf "$ballerina_ctx"
     echo "✅ built $IMAGE"
 else
     echo "✅ runner image already present ($IMAGE) — skipping build (FORCE=1 to rebuild)"
