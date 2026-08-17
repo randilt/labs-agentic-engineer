@@ -198,10 +198,29 @@ func toIgenValidationContext(r validation.ValidationContextResponse) igen.Valida
 	if r.Endpoints != nil {
 		eps = make([]igen.ComponentEndpoint, len(r.Endpoints))
 		for i, e := range r.Endpoints {
-			eps[i] = igen.ComponentEndpoint{Component: e.Component, URL: e.URL}
+			eps[i] = igen.ComponentEndpoint{
+				Component: e.Component,
+				URL:       e.URL,
+				Role:      igenComponentEndpointRole(e.Role),
+				Pair:      e.Pair,
+			}
 		}
 	}
-	return igen.ValidationContextResponse{Endpoints: eps, CriteriaPath: r.CriteriaPath}
+	var pairs []igen.ParityPair
+	if r.Pairs != nil {
+		pairs = make([]igen.ParityPair, len(r.Pairs))
+		for i, p := range r.Pairs {
+			pairs[i] = igen.ParityPair{Legacy: p.Legacy, Modernize: p.Modernize}
+		}
+	}
+	return igen.ValidationContextResponse{Endpoints: eps, CriteriaPath: r.CriteriaPath, Pairs: pairs}
+}
+
+func igenComponentEndpointRole(s string) igen.ComponentEndpointRole {
+	if s == "" {
+		return ""
+	}
+	return igen.ComponentEndpointRole(s)
 }
 
 func toIgenTestCredential(c validation.TestCredential) igen.TestCredential {

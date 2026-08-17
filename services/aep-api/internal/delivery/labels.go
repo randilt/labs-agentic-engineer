@@ -41,6 +41,12 @@ const (
 	// LabelValidationWork ("aep:validation") marks the validation issue, worked
 	// by the run's validation cycle rather than an ordinary coding cycle.
 	LabelValidationWork = "aep:validation"
+	// LabelParityWork ("aep:parity") marks a dual-endpoint parity validation issue.
+	// decideAutoMerge declines these — a human must merge after reviewing the diff.
+	LabelParityWork = "aep:parity"
+	// LabelOnboard ("aep:onboard") marks import-as-is vendoring work executed by
+	// the platform ops executor, never handed to a coding cycle.
+	LabelOnboard = "aep:onboard"
 	// LabelAdopt ("aep:codingagent") is the GitHub-side adoption trigger: a
 	// human stamps it on any issue to hand it to the agent.
 	LabelAdopt = "aep:codingagent"

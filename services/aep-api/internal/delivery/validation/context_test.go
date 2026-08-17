@@ -57,9 +57,9 @@ type fakeEndpoints struct {
 	called bool
 }
 
-func (f *fakeEndpoints) ResolveEndpoints(_ context.Context, _, _ string) ([]ComponentEndpoint, error) {
+func (f *fakeEndpoints) ResolveEndpoints(_ context.Context, _, _ string) ([]ComponentEndpoint, []ParityPair, error) {
 	f.called = true
-	return f.eps, nil
+	return f.eps, nil, nil
 }
 
 func TestValidationContext_ResolvesEndpoints(t *testing.T) {

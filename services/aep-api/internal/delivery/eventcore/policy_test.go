@@ -96,10 +96,17 @@ func TestDecideAutoMerge(t *testing.T) {
 		// which is what reading `aep` alone did — strands the tests and the report
 		// unmerged, so the run can never read a verdict from them.
 		{"the validation issue is this run's work", []int{15}, true, []int{15}},
+		{"parity validation awaits human merge", []int{16}, false, []int{16}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := decideAutoMerge(c.resolves, work)
+			issues := work
+			if c.name == "parity validation awaits human merge" {
+				issues = append(append([]sourcecontrol.IssueInfo{}, work...), sourcecontrol.IssueInfo{
+					Number: 16, State: "open", Labels: []string{delivery.LabelValidationWork, delivery.LabelParityWork},
+				})
+			}
+			got := decideAutoMerge(c.resolves, issues)
 			if got.Merge != c.want {
 				t.Fatalf("Merge = %v (%s), want %v", got.Merge, got.Reason, c.want)
 			}

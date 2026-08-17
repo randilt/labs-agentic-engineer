@@ -1056,6 +1056,7 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	validationSvc := validation.NewService(validation.Deps{
 		Issues:   issueService,
 		Criteria: validationCriteria{files: filesSvc},
+		Parity:   validationParityChecker{store: artifactStore},
 	})
 	// A planned Task's prose body names the App Path the agent works in — the
 	// same component → appPath read the merged-PR build fan-out matches against.

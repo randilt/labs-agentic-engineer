@@ -101,35 +101,59 @@ type validationEndpointResolver struct {
 	comp  componentDeployLister
 }
 
-func (r validationEndpointResolver) ResolveEndpoints(ctx context.Context, orgHandle, projectID string) ([]validation.ComponentEndpoint, error) {
-	// This runs inside the runner's validation-context request, whose ctx carries
-	// the runner's inbound task JWT (aud git-service). Without this marker the OC
-	// transport would forward that token to OpenChoreo, which rejects it (401) —
-	// so every ListDeployments below would fail and we'd resolve zero endpoints.
-	// Act as the BFF's own service identity (org resolved via namespace), exactly
-	// like the MCP handler and the async watchers.
+func (r validationEndpointResolver) ResolveEndpoints(ctx context.Context, orgHandle, projectID string) ([]validation.ComponentEndpoint, []validation.ParityPair, error) {
 	ctx = authn.WithServiceIdentity(ctx)
 	df, err := r.store.ReadDesign(ctx, orgHandle, projectID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	byURL := map[string]string{}
+	legacyOf := map[string]string{}
+	for i := range df.Components {
+		c := df.Components[i]
+		if c.IsModernize() && c.Modernizes != "" {
+			legacyOf[c.Name] = c.Modernizes
+		}
 	}
 	var out []validation.ComponentEndpoint
 	for i := range df.Components {
 		name := df.Components[i].Name
-		// A never-deployed component is an EMPTY 200 list (ListReleaseBindings
-		// filters by component), so an error here is genuinely exceptional
-		// (auth/network/OC down) — propagate it instead of silently resolving
-		// fewer endpoints than the deployed system actually has.
 		list, lerr := r.comp.ListDeployments(ctx, orgHandle, projectID, name)
 		if lerr != nil {
-			return nil, fmt.Errorf("list deployments for %s: %w", name, lerr)
+			return nil, nil, fmt.Errorf("list deployments for %s: %w", name, lerr)
 		}
-		// No resolved URL yet (empty list / no external endpoint) — skip.
 		if url := firstDeploymentURL(list); url != "" {
-			out = append(out, validation.ComponentEndpoint{Component: name, URL: url})
+			byURL[name] = url
+			ep := validation.ComponentEndpoint{Component: name, URL: url}
+			if legacy, ok := legacyOf[name]; ok {
+				ep.Role = "modernize"
+				ep.Pair = legacy
+			}
+			out = append(out, ep)
 		}
 	}
-	return out, nil
+	for j := range out {
+		for modernize, legacy := range legacyOf {
+			if out[j].Component == legacy {
+				out[j].Role = "legacy"
+				out[j].Pair = modernize
+			}
+		}
+	}
+	var pairs []validation.ParityPair
+	seen := map[string]bool{}
+	for modernize, legacy := range legacyOf {
+		if byURL[modernize] == "" || byURL[legacy] == "" {
+			continue
+		}
+		key := legacy + "->" + modernize
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		pairs = append(pairs, validation.ParityPair{Legacy: legacy, Modernize: modernize})
+	}
+	return out, pairs, nil
 }
 
 // firstDeploymentURL returns the first non-empty deployed endpoint URL.
@@ -162,4 +186,21 @@ func (mockValidationCredentials) RequestCredentials(_ context.Context, _, _ stri
 		Mock:     true,
 		Note:     "user provisioning not implemented; shared mock credentials — any role currently returns the same account",
 	}, nil
+}
+
+type validationParityChecker struct {
+	store *spec.ArtifactStore
+}
+
+func (v validationParityChecker) HasModernizePairs(ctx context.Context, orgID, projectID string) (bool, error) {
+	df, err := v.store.ReadDesign(ctx, orgID, projectID)
+	if err != nil {
+		return false, err
+	}
+	for i := range df.Components {
+		if df.Components[i].IsModernize() && df.Components[i].Modernizes != "" {
+			return true, nil
+		}
+	}
+	return false, nil
 }

@@ -23,11 +23,34 @@ const (
 	TaskJWTScopes     taskJWTContextKey     = "taskJWT.Scopes"
 )
 
+// Defines values for ComponentEndpointRole.
+const (
+	Legacy    ComponentEndpointRole = "legacy"
+	Modernize ComponentEndpointRole = "modernize"
+)
+
+// Valid indicates whether the value is a known member of the ComponentEndpointRole enum.
+func (e ComponentEndpointRole) Valid() bool {
+	switch e {
+	case Legacy:
+		return true
+	case Modernize:
+		return true
+	default:
+		return false
+	}
+}
+
 // ComponentEndpoint defines model for ComponentEndpoint.
 type ComponentEndpoint struct {
-	Component string `json:"component"`
-	URL       string `json:"url"`
+	Component string                `json:"component"`
+	Pair      string                `json:"pair,omitempty"`
+	Role      ComponentEndpointRole `json:"role,omitempty"`
+	URL       string                `json:"url"`
 }
+
+// ComponentEndpointRole defines model for ComponentEndpoint.Role.
+type ComponentEndpointRole string
 
 // Error Flat error envelope returned by every non-2xx response.
 type Error struct {
@@ -63,6 +86,12 @@ type OnboardingFacts struct {
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
+// ParityPair defines model for ParityPair.
+type ParityPair struct {
+	Legacy    string `json:"legacy"`
+	Modernize string `json:"modernize"`
+}
+
 // RefreshResponse Fresh GitHub token + commit identity for the execution.
 type RefreshResponse struct {
 	ExpiresAt time.Time `json:"expiresAt"`
@@ -92,6 +121,7 @@ type TestCredentialRequest struct {
 type ValidationContextResponse struct {
 	CriteriaPath string              `json:"criteriaPath"`
 	Endpoints    []ComponentEndpoint `json:"endpoints"`
+	Pairs        []ParityPair        `json:"pairs,omitempty"`
 }
 
 // publisherCCContextKey is the context key for publisherCC security scheme

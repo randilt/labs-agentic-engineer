@@ -41,17 +41,19 @@ const validationTitle = "Validate the deployed system against its acceptance cri
 type Service struct {
 	issues   IssueClient
 	criteria CriteriaReader
+	parity   ParityPairChecker
 }
 
 // Deps is the validation service's collaborator set.
 type Deps struct {
 	Issues   IssueClient
 	Criteria CriteriaReader
+	Parity   ParityPairChecker
 }
 
 // NewService wires the validation service from its collaborator set.
 func NewService(d Deps) *Service {
-	return &Service{issues: d.Issues, criteria: d.Criteria}
+	return &Service{issues: d.Issues, criteria: d.Criteria, parity: d.Parity}
 }
 
 // EnsureValidationIssue mints ONE aep:validation issue per version — filed into
@@ -130,7 +132,7 @@ func (s *Service) EnsureValidationIssue(ctx context.Context, orgID, projectID st
 	req := sourcecontrol.CreateIssueRequest{
 		Title:  validationTitle,
 		Body:   rationale(doc.summarize()) + "\n\n" + renderScope(doc),
-		Labels: []string{delivery.LabelValidationWork},
+		Labels: validationLabels(ctx, s, orgID, projectID),
 		// The version pin RIDES the create — one call, so the issue is never
 		// versionless, not even for the beat a follow-up patch would take.
 		Milestone: &milestoneNumber,
@@ -151,6 +153,16 @@ func (s *Service) EnsureValidationIssue(ctx context.Context, orgID, projectID st
 	slog.InfoContext(ctx, "validation: minted validation issue",
 		"project", projectID, "milestone", milestoneNumber, "issue", res.Number)
 	return res.Number, nil
+}
+
+func validationLabels(ctx context.Context, s *Service, orgID, projectID string) []string {
+	labels := []string{delivery.LabelValidationWork}
+	if s.parity != nil {
+		if has, err := s.parity.HasModernizePairs(ctx, orgID, projectID); err == nil && has {
+			labels = append(labels, delivery.LabelParityWork)
+		}
+	}
+	return labels
 }
 
 // findValidationIssue returns the number of the milestone's aep:validation issue

@@ -223,9 +223,24 @@ components:
             $ref: '#/components/schemas/ComponentEndpoint'
         criteriaPath:
           type: string
+        pairs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParityPair'
       required:
       - endpoints
       - criteriaPath
+    ParityPair:
+      type: object
+      additionalProperties: false
+      properties:
+        legacy:
+          type: string
+        modernize:
+          type: string
+      required:
+      - legacy
+      - modernize
     ComponentEndpoint:
       type: object
       additionalProperties: false
@@ -233,6 +248,11 @@ components:
         component:
           type: string
         url:
+          type: string
+        role:
+          type: string
+          enum: [legacy, modernize]
+        pair:
           type: string
       required:
       - component

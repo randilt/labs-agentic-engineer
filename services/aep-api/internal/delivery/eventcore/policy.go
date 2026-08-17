@@ -76,7 +76,8 @@ func decideAutoMerge(resolves []int, milestoneIssues []sourcecontrol.IssueInfo) 
 	work := make(map[int]bool, len(milestoneIssues))
 	for _, iss := range milestoneIssues {
 		if delivery.HasLabel(iss.Labels, delivery.LabelAgentWork) ||
-			delivery.HasLabel(iss.Labels, delivery.LabelValidationWork) {
+			delivery.HasLabel(iss.Labels, delivery.LabelValidationWork) ||
+			delivery.HasLabel(iss.Labels, delivery.LabelOnboard) {
 			work[iss.Number] = true
 		}
 	}
@@ -88,6 +89,20 @@ func decideAutoMerge(resolves []int, milestoneIssues []sourcecontrol.IssueInfo) 
 	}
 	if len(matched) == 0 {
 		return mergeDecision{Reason: "no resolved issue is this run's work in this milestone"}
+	}
+	for _, n := range matched {
+		for _, iss := range milestoneIssues {
+			if iss.Number != n {
+				continue
+			}
+			if delivery.HasLabel(iss.Labels, delivery.LabelParityWork) {
+				return mergeDecision{
+					Merge:   false,
+					Reason:  "parity validation awaits human merge",
+					Matched: matched,
+				}
+			}
+		}
 	}
 	return mergeDecision{Merge: true, Reason: "resolves this run's work in its milestone", Matched: matched}
 }

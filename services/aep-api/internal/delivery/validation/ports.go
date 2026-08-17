@@ -55,6 +55,12 @@ type CriteriaReader interface {
 	ReadValidationCriteria(ctx context.Context, orgID, projectID string) (raw []byte, found bool, err error)
 }
 
+// ParityPairChecker reports whether the project design declares at least one
+// modernize/importAsIs pair (modernizes back-reference present).
+type ParityPairChecker interface {
+	HasModernizePairs(ctx context.Context, orgID, projectID string) (bool, error)
+}
+
 // ContextProvider is the internal validation-context endpoint's view of the
 // context service (*ContextService satisfies it). cycleID is the run cycle the
 // runner was dispatched for; the org is the verified caller's, bound into ctx by

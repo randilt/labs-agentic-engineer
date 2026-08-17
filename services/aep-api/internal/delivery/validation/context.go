@@ -33,6 +33,14 @@ var ErrCycleNotFound = errors.New("validation: cycle not found for org")
 type ComponentEndpoint struct {
 	Component string `json:"component"`
 	URL       string `json:"url"`
+	Role      string `json:"role,omitempty"` // legacy | modernize
+	Pair      string `json:"pair,omitempty"` // sibling component name
+}
+
+// ParityPair names a legacy/modernize endpoint pair for dual-target validation.
+type ParityPair struct {
+	Legacy    string `json:"legacy"`
+	Modernize string `json:"modernize"`
 }
 
 // ValidationContextResponse is the secure runtime-inputs payload the runner
@@ -43,6 +51,7 @@ type ComponentEndpoint struct {
 type ValidationContextResponse struct {
 	Endpoints    []ComponentEndpoint `json:"endpoints"`
 	CriteriaPath string              `json:"criteriaPath"`
+	Pairs        []ParityPair        `json:"pairs,omitempty"`
 }
 
 // CycleLocator resolves a runner's CYCLE id to its project, fenced by the
@@ -59,11 +68,10 @@ type CycleLocator interface {
 }
 
 // EndpointResolver resolves a project's deployed component endpoint URLs (first
-// external URL per component, from OpenChoreo ReleaseBindings). The composition
-// root adapts the design-component read + ComponentService.ListDeployments so
-// this feature needs neither the artifacts nor the component edge.
+// external URL per component, from OpenChoreo ReleaseBindings) and any
+// modernize/legacy pairs both sides of which are deployed.
 type EndpointResolver interface {
-	ResolveEndpoints(ctx context.Context, orgHandle, projectID string) ([]ComponentEndpoint, error)
+	ResolveEndpoints(ctx context.Context, orgHandle, projectID string) ([]ComponentEndpoint, []ParityPair, error)
 }
 
 // ContextService answers the runner's validation-context fetch.
@@ -92,12 +100,13 @@ func (s *ContextService) ValidationContext(ctx context.Context, cycleID, orgHand
 	if !found {
 		return nil, ErrCycleNotFound
 	}
-	eps, err := s.endpoints.ResolveEndpoints(ctx, orgHandle, projectID)
+	eps, pairs, err := s.endpoints.ResolveEndpoints(ctx, orgHandle, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("validation context: resolve endpoints: %w", err)
 	}
 	return &ValidationContextResponse{
 		Endpoints:    eps,
 		CriteriaPath: criteriaFilePath,
+		Pairs:        pairs,
 	}, nil
 }
