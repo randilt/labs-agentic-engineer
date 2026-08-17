@@ -86,8 +86,8 @@ function OnboardModeBanner({
   modernizes,
   onModernize,
 }: {
-  sourceMode?: string;
-  modernizes?: string;
+  sourceMode?: string | undefined;
+  modernizes?: string | undefined;
   onModernize: () => void;
 }) {
   if (sourceMode === "importAsIs") {
@@ -121,9 +121,9 @@ function AnalysisStatusBanner({
   reason,
   isError,
 }: {
-  status?: string;
-  reason?: string;
-  isError?: boolean;
+  status?: string | undefined;
+  reason?: string | undefined;
+  isError?: boolean | undefined;
 }) {
   if (isError) {
     return (
@@ -1067,10 +1067,11 @@ export function SpecView({ projectName }: { projectName: string }) {
                         <OnboardModeBanner
                           sourceMode={selectedOnboarding?.sourceMode}
                           modernizes={selectedOnboarding?.modernizes}
-                          onModernize={() =>
-                            selectedComponentName &&
-                            seedChat(`/onboard ${selectedComponentName}`)
-                          }
+                          onModernize={() => {
+                            if (selectedComponentName) {
+                              seedChat(`/onboard ${selectedComponentName}`);
+                            }
+                          }}
                         />
                         <DesignView
                           design={structuredLive}
@@ -1096,10 +1097,11 @@ export function SpecView({ projectName }: { projectName: string }) {
                         <OnboardModeBanner
                           sourceMode={selectedOnboarding?.sourceMode}
                           modernizes={selectedOnboarding?.modernizes}
-                          onModernize={() =>
-                            selectedComponentName &&
-                            seedChat(`/onboard ${selectedComponentName}`)
-                          }
+                          onModernize={() => {
+                            if (selectedComponentName) {
+                              seedChat(`/onboard ${selectedComponentName}`);
+                            }
+                          }}
                         />
                         <DesignView
                           key={content.data.sha}

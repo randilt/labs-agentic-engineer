@@ -37,7 +37,8 @@ import (
 //	               (jwt → orgensure)    (org from the verified token, never input)  ← packages/contracts/api/v1 (source of truth)
 //	internal S2S   /internal/v1/validation/, BFF Task-JWT or publisher-cc          internal.go · runnerAuthGate
 //	               /internal/v1/executions/  (dual-token verify + INT-6 fence,      ← packages/contracts/api/internal/v1 (non-public)
-//	               (deny-by-default gate)     both keyed to the run CYCLE id)
+//	               /internal/v1/onboarding/  keyed to the analysis execution id)
+//	               (deny-by-default gate)     executions+validation keyed to CYCLE)
 //	internal MCP   /internal/v1/mcp     BFF-signed JWT, aud aep-api-mcp            dependencies/mcp_server.go ·
 //	               (POST, JSON-RPC)     (org from ocOrgId claim, never input)       auth.AgentsScopedVerifier (no spec — JSON-RPC)
 //	               /mcp/playground-token  NONE — flag-gated only                   dependencies/playground_token.go
@@ -134,15 +135,16 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	// gateway-advertised. Every runner callback is keyed to the run CYCLE the
 	// platform dispatched the pod for — the id it carries as AEP_TASK_ID.
 	//
-	// TWO prefixes, ONE handler: the validation callbacks live under the feature
-	// that owns them, and token refresh keeps the `/executions/` prefix it was
-	// published under (the id it names is a cycle, the same wire-compat debt
-	// AEP_TASK_ID carries). Both must be mounted — the inner mux registers the
-	// contract's full paths, so a prefix that is not mounted here 404s before any
-	// handler or auth gate is reached.
+	// THREE prefixes, ONE handler: validation callbacks under the feature that
+	// owns them, token refresh under `/executions/` (the id it names is a cycle,
+	// the same wire-compat debt AEP_TASK_ID carries), and analysis facts under
+	// `/onboarding/` (the id is the analysis execution). Each must be mounted —
+	// the inner mux registers the contract's full paths, so a prefix that is not
+	// mounted here 404s before any handler or auth gate is reached.
 	internalHandler := newInternalV1Handler(params.InternalDeps)
 	mux.Handle(internalV1+"/executions/", internalHandler)
 	mux.Handle(internalV1+"/validation/", internalHandler)
+	mux.Handle(internalV1+"/onboarding/", internalHandler)
 
 	// ── internal MCP discovery (POST /internal/v1/mcp) ───────────────────────
 	// A raw (non-Huma) JSON-RPC mount: the MCP server the agents service's

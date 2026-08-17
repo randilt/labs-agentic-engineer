@@ -191,6 +191,39 @@ func TestExecWatcher_ClosesLegacyCodingAgentExecutions(t *testing.T) {
 	}
 }
 
+// TestExecWatcher_LeavesAnalysisCaJobsRunning: analysis dispatch reuses the
+// ca- JobRef prefix. ExecWatcher must not Finish those rows — AnalysisWatcher
+// owns them, and the facts callback needs the row still running.
+func TestExecWatcher_LeavesAnalysisCaJobsRunning(t *testing.T) {
+	analysis := &delivery.Execution{ID: "a1", OrgID: "acme", Repo: "acme/widgets", IssueNumber: 0,
+		Kind: string(taskmeta.KindAnalysis), Status: string(taskmeta.ExecRunning), RunName: "ca-4e55aa9b8c3-b2f2eb69"}
+	legacy := &delivery.Execution{ID: "j1", OrgID: "acme", Repo: "acme/widgets", IssueNumber: 7,
+		Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecRunning), RunName: "ca-abc12345-2601011200"}
+	repo := newFakeExecRepo(analysis, legacy)
+
+	var polled []string
+	oc := &ocmocks.ComponentClientMock{
+		GetWorkflowRunFunc: func(_ context.Context, _, runName string) (*gen.WorkflowRun, error) {
+			polled = append(polled, runName)
+			return &gen.WorkflowRun{Name: runName, Completed: false}, nil
+		},
+	}
+	w := NewExecWatcher(oc, repo, nil, 0)
+
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	if len(polled) != 0 {
+		t.Fatalf("ExecWatcher must not poll ca- Jobs as WorkflowRuns, polled=%v", polled)
+	}
+	if got := repo.get("a1"); got.Status != string(taskmeta.ExecRunning) {
+		t.Fatalf("analysis ca- row = status %q reason %q, want running", got.Status, got.Reason)
+	}
+	if got := repo.get("j1"); got.Status != string(taskmeta.ExecFailed) || got.Reason != legacyCodingExecutionReason {
+		t.Fatalf("legacy coding ca- row = status %q reason %q, want failed/%s", got.Status, got.Reason, legacyCodingExecutionReason)
+	}
+}
+
 func TestExecWatcher_CodingFailure_FinishesFailed_SuccessRidesPRWebhook(t *testing.T) {
 	// A ClusterWorkflow (`wf-…`) coding run — the ExecWatcher's domain;
 	// `ca-…` coding-agent runs are the JobWatcher's and are skipped here.

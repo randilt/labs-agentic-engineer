@@ -53,12 +53,14 @@ func isAdmittedSpecPath(p string) bool {
 
 // KeepInTurnSnapshot mirrors keepInTurnSnapshot: keep agent-authored sources
 // (*.md, *.dsl, *.cell, a design.json or validation-criteria.json basename,
-// the two OpenAPI contract shapes above) and drop everything else. *.cell is
-// the project-level cell-diagram DSL (design.cell). validation-criteria.json
-// is kept so a design regeneration can see the existing acceptance oracle and
-// reuse its criterion ids (keeping committed e2e specs, which are keyed by
-// criterion id, mapped) instead of renumbering. Arbitrary *.yaml (e.g.
-// workload.yaml) stays excluded — only the two exact shapes are admitted.
+// specs/onboarding/analysis.json, the two OpenAPI contract shapes above) and
+// drop everything else. *.cell is the project-level cell-diagram DSL
+// (design.cell). validation-criteria.json is kept so a design regeneration
+// can see the existing acceptance oracle and reuse its criterion ids
+// (keeping committed e2e specs, which are keyed by criterion id, mapped)
+// instead of renumbering. analysis.json is the /onboard brief. Arbitrary
+// *.yaml (e.g. workload.yaml) stays excluded — only the two exact shapes are
+// admitted.
 func KeepInTurnSnapshot(path string) bool {
 	if strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".dsl") || strings.HasSuffix(path, ".cell") {
 		return true
@@ -70,7 +72,9 @@ func KeepInTurnSnapshot(path string) bool {
 	if i := strings.LastIndexByte(path, '/'); i >= 0 {
 		base = path[i+1:]
 	}
-	return base == "design.json" || base == "validation-criteria.json"
+	return base == "design.json" ||
+		base == "validation-criteria.json" ||
+		(base == "analysis.json" && strings.HasPrefix(path, "specs/onboarding/"))
 }
 
 // InTurnSnapshot is the complete per-file predicate the agents-side snapshot

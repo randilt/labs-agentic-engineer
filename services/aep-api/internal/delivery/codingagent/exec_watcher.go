@@ -147,13 +147,16 @@ func (w *ExecWatcher) Sweep(ctx context.Context) error {
 		if row.Status != string(taskmeta.ExecRunning) || row.RunName == "" {
 			continue
 		}
-		// Coding-agent Job Components (`ca-…`) are owned by the cycle
-		// JobWatcher, not by WorkflowRuns. Any still-running KindCoding
-		// execution row with a ca- run name is a pre-migration leftover: no
-		// watcher will ever Finish it via GetWorkflowRun. Close it here so it
-		// cannot sit `running` forever and hold the issue mutex.
+		// Coding-agent Job Components (`ca-…`) are not WorkflowRuns. Never poll
+		// them via GetWorkflowRun. KindCoding leftovers from the WorkflowRun
+		// → Job migration must be Finished here (JobWatcher owns live cycles,
+		// not these execution rows). KindAnalysis uses the same ca- run-name
+		// prefix and is owned by onboarding.AnalysisWatcher — leaving those
+		// running is the contract; retiring them as "legacy coding" is a bug.
 		if isCodingAgentRun(row.RunName) {
-			w.finishLegacyCodingExecution(ctx, row)
+			if row.Kind == string(taskmeta.KindCoding) {
+				w.finishLegacyCodingExecution(ctx, row)
+			}
 			continue
 		}
 		run, gerr := w.oc.GetWorkflowRun(ctx, row.OrgID, row.RunName)

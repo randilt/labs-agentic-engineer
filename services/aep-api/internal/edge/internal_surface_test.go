@@ -231,6 +231,48 @@ func TestInternalSurface_ValidationCallbacksAreRoutedAndCycleKeyed(t *testing.T)
 	})
 }
 
+// Analysis facts live under /internal/v1/onboarding/, a third prefix the inner
+// contract mux registers in full. Missing it on the outer mux 404s before auth
+// or the handler — which is exactly how a live analysis pod's POST /facts
+// disappeared while ExecWatcher had already marked the row failed.
+func TestInternalSurface_OnboardingFactsAreRouted(t *testing.T) {
+	t.Parallel()
+	s := newInternalStack(t)
+	const execID = "4e55aa9b-8c3a-439e-b53a-fdbd10206f78"
+
+	tok, err := s.tokens.Issue(execID, "org-acme", "proj-1")
+	if err != nil {
+		t.Fatalf("issue task token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/onboarding/"+execID+"/facts",
+		strings.NewReader(`{"sourceRepo":"acme/widgets","ref":"abc123"}`))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.handler.ServeHTTP(rec, req)
+
+	if rec.Code == 404 {
+		t.Fatalf("404 — the /internal/v1/onboarding/ prefix is not mounted on the edge mux")
+	}
+	// Service is nil in this stack → 503 after the prefix is mounted. That is
+	// the routing pin; ReceiveFacts is covered in the onboarding package.
+	if rec.Code != 503 {
+		t.Fatalf("want 503 (facts service not configured), got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	other, _ := s.tokens.Issue("some-other-execution", "org-acme", "proj-1")
+	req = httptest.NewRequest(http.MethodPost, "/internal/v1/onboarding/"+execID+"/facts",
+		strings.NewReader(`{"sourceRepo":"acme/widgets","ref":"abc123"}`))
+	req.Header.Set("Authorization", "Bearer "+other)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	s.handler.ServeHTTP(rec, req)
+	if rec.Code != 403 {
+		t.Fatalf("mismatched execution: want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestInternalSurface_AuthPosture(t *testing.T) {
 	t.Parallel()
 	h, mgr, _ := newInternalTestStack(t)

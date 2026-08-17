@@ -114,19 +114,25 @@ function isAdmittedSpecPath(path: string): boolean {
 /**
  * The turn-snapshot filter — mirrors aep-api `agentfold.KeepInTurnSnapshot`:
  * keep agent-authored sources (`*.md`, `*.dsl`, `*.cell`, component
- * `design.json`, the acceptance oracle `validation-criteria.json`, the two
- * OpenAPI contract shapes above) and drop everything else (derived
- * `.excalidraw`/`*.gen.json` projections, code, arbitrary `*.yaml` such as
- * `workload.yaml`, …). `*.cell` is the project-level cell-diagram DSL
- * (design.cell) that drives the live architecture diagram.
- * validation-criteria.json is kept so a design regeneration can see the
- * existing oracle and preserve its covered flags instead of resetting them.
+ * `design.json`, the acceptance oracle `validation-criteria.json`, onboarding
+ * facts `specs/onboarding/analysis.json`, the two OpenAPI contract shapes
+ * above) and drop everything else (derived `.excalidraw`/`*.gen.json`
+ * projections, code, arbitrary `*.yaml` such as `workload.yaml`, …). `*.cell`
+ * is the project-level cell-diagram DSL (design.cell) that drives the live
+ * architecture diagram. validation-criteria.json is kept so a design
+ * regeneration can see the existing oracle and preserve its covered flags
+ * instead of resetting them. analysis.json is the `/onboard` brief — without
+ * it the skill correctly refuses to invent a design from an empty bundle.
  */
 export function keepInTurnSnapshot(path: string): boolean {
   if (path.endsWith(".md") || path.endsWith(".dsl") || path.endsWith(".cell")) return true;
   if (isAdmittedSpecPath(path)) return true;
   const base = basename(path);
-  return base === "design.json" || base === "validation-criteria.json";
+  return (
+    base === "design.json" ||
+    base === "validation-criteria.json" ||
+    (base === "analysis.json" && path.startsWith("specs/onboarding/"))
+  );
 }
 
 /**

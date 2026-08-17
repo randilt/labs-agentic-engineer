@@ -370,11 +370,14 @@ func TestSnapshotFilter(t *testing.T) {
 		!KeepInTurnSnapshot("specs/design/components/x/design.json") ||
 		!KeepInTurnSnapshot("specs/validation/validation-criteria.json") ||
 		!KeepInTurnSnapshot("specs/design/components/x/openapi.yaml") ||
-		!KeepInTurnSnapshot("specs/design/components/x/dependencies/stripe.openapi.yaml") {
+		!KeepInTurnSnapshot("specs/design/components/x/dependencies/stripe.openapi.yaml") ||
+		!KeepInTurnSnapshot("specs/onboarding/analysis.json") {
 		t.Fatal("keep-filter rejects agent-authored sources")
 	}
 	if KeepInTurnSnapshot("design.json.bak") ||
 		KeepInTurnSnapshot("x.gen.json") ||
+		KeepInTurnSnapshot("analysis.json") ||
+		KeepInTurnSnapshot("specs/design/analysis.json") ||
 		KeepInTurnSnapshot("specs/design/components/x/workload.yaml") ||
 		KeepInTurnSnapshot("workload.yaml") ||
 		KeepInTurnSnapshot("specs/design/components/x/openapi.yml") ||

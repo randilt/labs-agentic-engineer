@@ -58,6 +58,7 @@ test("readSnapshot walks recursively with POSIX keys and applies the turn filter
     "specs/design/design.cell": "title Shop\n",
     "specs/design/system.dsl": "workspace {}\n",
     "specs/design/components/api/design.json": "{}\n",
+    "specs/onboarding/analysis.json": "{\"sourceRepo\":\"acme/app\"}\n",
     // Produced + consumed OpenAPI contracts: the two admitted *.yaml shapes —
     // a turn must be able to read back the spec it just stored.
     "specs/design/components/api/openapi.yaml": "openapi: 3.0.3\n",
@@ -80,6 +81,7 @@ test("readSnapshot walks recursively with POSIX keys and applies the turn filter
       "specs/design/design.cell",
       "specs/design/design.md",
       "specs/design/system.dsl",
+      "specs/onboarding/analysis.json",
       "specs/requirements/prd.md",
     ]);
     assert.equal(snap["specs/requirements/prd.md"], "# Req\n");
@@ -94,6 +96,8 @@ test("filterTurnSnapshot mirrors the walk's rules over an in-memory map", () => 
     "b/system.dsl": "y",
     "b/design.json": "z",
     "specs/validation/validation-criteria.json": "keep",
+    "specs/onboarding/analysis.json": "keep",
+    "specs/design/analysis.json": "drop",
     "specs/design/components/api/openapi.yaml": "keep",
     "specs/design/components/api/dependencies/stripe.openapi.yaml": "keep",
     "b/openapi.yaml": "drop", // not under specs/design/components/*/
@@ -107,6 +111,7 @@ test("filterTurnSnapshot mirrors the walk's rules over an in-memory map", () => 
     "b/system.dsl",
     "specs/design/components/api/dependencies/stripe.openapi.yaml",
     "specs/design/components/api/openapi.yaml",
+    "specs/onboarding/analysis.json",
     "specs/validation/validation-criteria.json",
   ]);
 });
@@ -123,6 +128,9 @@ test("keepInTurnSnapshot admits the two OpenAPI contract shapes but still reject
   assert.equal(keepInTurnSnapshot("specs/design/components/orders/openapi.yml"), false);
   // A `*` must not cross a path segment: nesting the dep name breaks the shape.
   assert.equal(keepInTurnSnapshot("specs/design/components/orders/dependencies/nested/stripe.openapi.yaml"), false);
+  assert.equal(keepInTurnSnapshot("specs/onboarding/analysis.json"), true);
+  assert.equal(keepInTurnSnapshot("analysis.json"), false);
+  assert.equal(keepInTurnSnapshot("specs/design/analysis.json"), false);
 });
 
 const SKILL_MD = (name: string, description: string, body: string): string =>
