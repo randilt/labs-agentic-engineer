@@ -166,6 +166,67 @@ func TestPlanTap_WritesLandBeforeFrameIsForwarded(t *testing.T) {
 	}
 }
 
+// An importAsIs component's code is vendored unmodified by the onboard ops
+// path, so no coding agent may be pointed at it. skills/task-planning says the
+// same thing, but a planner that slips must not be able to mint the Task — the
+// platform refuses the write, and the modernize sibling still gets its Task.
+func TestPlanTap_ImportAsIsComponentGetsNoTask(t *testing.T) {
+	issues := newFakeIssues()
+	tap := newTestTap(issues)
+	tap.vendored = map[string]bool{"legacy-orders": true}
+	var buf bytes.Buffer
+
+	tap.Stream(stream(
+		toolResult(planOK("legacy-orders", "Implement legacy-orders", nil)),
+		toolResult(planOK("order-service", "Implement order-service", nil)),
+		"data: [DONE]\n\n",
+	), &buf, func() {})
+
+	if len(issues.created) != 1 {
+		t.Fatalf("expected only the non-vendored Task, got %d: %+v", len(issues.created), issues.created)
+	}
+	if got := issues.created[0].Title; got != "Implement order-service" {
+		t.Errorf("minted Task for the wrong component: %q", got)
+	}
+	// A refused plan is not a write failure — nothing was attempted.
+	if tap.failures != 0 {
+		t.Errorf("failures = %d, want 0: skipping a vendored component is not a failed write", tap.failures)
+	}
+}
+
+// Component names are matched case-insensitively, the same as appPaths — the
+// planner echoes whatever casing the design used.
+func TestPlanTap_ImportAsIsMatchIsCaseInsensitive(t *testing.T) {
+	issues := newFakeIssues()
+	tap := newTestTap(issues)
+	tap.vendored = map[string]bool{"legacy-orders": true}
+	var buf bytes.Buffer
+
+	tap.Stream(stream(
+		toolResult(planOK("Legacy-Orders", "Implement Legacy-Orders", nil)),
+	), &buf, func() {})
+
+	if len(issues.created) != 0 {
+		t.Fatalf("case-differing name bypassed the vendored guard: %+v", issues.created)
+	}
+}
+
+// No design reader wired (or an unreadable design) must plan everything rather
+// than silently dropping the whole turn.
+func TestPlanTap_NoVendoredSetPlansEveryComponent(t *testing.T) {
+	issues := newFakeIssues()
+	tap := newTestTap(issues)
+	var buf bytes.Buffer
+
+	tap.Stream(stream(
+		toolResult(planOK("order-service", "Implement order-service", nil)),
+	), &buf, func() {})
+
+	if len(issues.created) != 1 {
+		t.Fatalf("expected 1 issue with no vendored set, got %d", len(issues.created))
+	}
+}
+
 func TestPlanTap_PlanNotOK_NoCreate(t *testing.T) {
 	issues := newFakeIssues()
 	tap := newTestTap(issues)

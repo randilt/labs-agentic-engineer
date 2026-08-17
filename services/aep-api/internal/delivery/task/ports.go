@@ -52,11 +52,18 @@ type IssueClient interface {
 
 // ComponentPathReader maps a design component to its source directory (appPath)
 // relative to the repo root — the "App Path" line a planned Task's prose body
-// carries so the agent knows where to work. The same app-root designComponents
-// adapter satisfies the identical port in the event plane. Optional: an unwired
-// reader simply omits the line.
+// carries so the agent knows where to work — and reports which components are
+// vendored rather than written. The same app-root designComponents adapter
+// satisfies the path half in the event plane. Optional: an unwired reader
+// simply omits the line and plans every component.
 type ComponentPathReader interface {
 	ComponentPaths(ctx context.Context, orgID, projectID string) (map[string]string, error)
+
+	// VendoredComponents names every importAsIs component, keyed by the
+	// component's design name. Their code is committed byte-identically by the
+	// onboard ops path, so a coding Task against one would edit imported source
+	// — the plan tap refuses to mint it.
+	VendoredComponents(ctx context.Context, orgID, projectID string) (map[string]bool, error)
 }
 
 // RepoResolver looks up the project's git repo row (its RepoURL yields the

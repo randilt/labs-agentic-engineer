@@ -53,6 +53,9 @@ emit no Task for a gate. Each design dependency is accounted for exactly once
 
 **Import-as-is components are flagged, never tasked**: the ops executor
 vendors them; you emit no Task for a component with `sourceMode: importAsIs`.
+The platform enforces this independently — a `planTask` naming one is dropped
+without minting an issue — so a slip here silently costs you the Task rather
+than putting an agent to work on vendored code.
 
 ## Fresh and incremental are the same flow
 

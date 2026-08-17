@@ -130,6 +130,26 @@ func (d designComponents) ComponentPaths(ctx context.Context, orgID, projectID s
 	return paths, nil
 }
 
+// VendoredComponents names the design's importAsIs components. The onboard ops
+// path commits their code unmodified, so they are the one population the task
+// planner must not mint a coding Task for. Satisfies task.ComponentPathReader.
+func (d designComponents) VendoredComponents(ctx context.Context, orgID, projectID string) (map[string]bool, error) {
+	design, err := d.store.ReadDesign(ctx, orgID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if design == nil {
+		return nil, nil
+	}
+	vendored := map[string]bool{}
+	for _, c := range design.Components {
+		if c.IsImportAsIs() {
+			vendored[c.Name] = true
+		}
+	}
+	return vendored, nil
+}
+
 // DeclaredResources maps each design component to its App Path plus the wiring
 // its design says it consumes — resource refs and sibling endpoint targets, both
 // read off each dependency's platform-stamped `wiring` (spec/derive_wiring.go). A

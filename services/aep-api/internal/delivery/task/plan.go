@@ -263,6 +263,7 @@ func (s *PlanService) startPlanLocked(ctx context.Context, orgID, projectID stri
 	tap.milestone = milestoneNumber
 	tap.componentStories = scope.ComponentStories
 	tap.appPaths = s.componentPaths(ctx, orgID, projectID)
+	tap.vendored = s.vendoredComponents(ctx, orgID, projectID)
 	tap.state = preload
 	tap.existingSlugs = slugs
 	tap.contextNumbers = contextNumbers
@@ -284,6 +285,25 @@ func (s *PlanService) componentPaths(ctx context.Context, orgID, projectID strin
 	out := make(map[string]string, len(raw))
 	for name, path := range raw {
 		out[strings.ToLower(strings.TrimSpace(name))] = path
+	}
+	return out
+}
+
+// vendoredComponents reads the design's importAsIs components, lowercased for
+// lookup. Best-effort like componentPaths: a design-read hiccup falls back to
+// planning every component, which is the pre-onboarding behaviour.
+func (s *PlanService) vendoredComponents(ctx context.Context, orgID, projectID string) map[string]bool {
+	if s.paths == nil {
+		return nil
+	}
+	raw, err := s.paths.VendoredComponents(ctx, orgID, projectID)
+	if err != nil {
+		slog.WarnContext(ctx, "plan: read vendored components failed", "project", projectID, "error", err)
+		return nil
+	}
+	out := make(map[string]bool, len(raw))
+	for name := range raw {
+		out[strings.ToLower(strings.TrimSpace(name))] = true
 	}
 	return out
 }

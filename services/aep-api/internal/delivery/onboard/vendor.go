@@ -201,19 +201,47 @@ func cloneForeignRepo(ctx context.Context, cloneURL, ref string, cred secrets.Cr
 	}
 	cleanup = func() { _ = os.RemoveAll(tmp) }
 
-	args := []string{"clone", "--depth", "1"}
-	if ref = strings.TrimSpace(ref); ref != "" {
-		args = append(args, "--branch", ref)
+	env := append(os.Environ(), gitCredentialEnv(ctx, cred)...)
+	run := func(args ...string) error {
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return nil
 	}
-	args = append(args, cloneURL, tmp)
 
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = append(os.Environ(), gitCredentialEnv(ctx, cred)...)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if err := run("clone", "--depth", "1", cloneURL, tmp); err != nil {
 		cleanup()
-		return "", nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+		return "", nil, err
+	}
+	if ref = strings.TrimSpace(ref); ref != "" {
+		if err := checkoutRef(tmp, ref, run); err != nil {
+			cleanup()
+			return "", nil, err
+		}
 	}
 	return tmp, cleanup, nil
+}
+
+// checkoutRef pins the clone to ref — a branch, tag, or commit SHA. The shallow
+// clone above carries only the default branch tip, so anything else needs an
+// explicit fetch. `clone --branch` cannot be used here: it rejects commit SHAs,
+// and the analysis half of onboarding (runners/remote-worker workspace.ts
+// checkoutSourceRef) accepts them, so both halves must read owner/name@ref the
+// same way.
+func checkoutRef(dir, ref string, run func(args ...string) error) error {
+	in := func(args ...string) error {
+		return run(append([]string{"-C", dir}, args...)...)
+	}
+	if err := in("checkout", "--detach", ref); err == nil {
+		return nil
+	}
+	if err := in("fetch", "--depth", "1", "origin", ref); err != nil {
+		return fmt.Errorf("fetch ref %q: %w", ref, err)
+	}
+	return in("checkout", "--detach", "FETCH_HEAD")
 }
 
 func gitCredentialEnv(ctx context.Context, cred secrets.Credential) []string {

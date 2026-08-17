@@ -76,6 +76,10 @@ type planTap struct {
 	// rendered into the body as the App Path the agent works in. Empty when no
 	// design reader is wired.
 	appPaths map[string]string
+	// vendored is the set of importAsIs component names (lowercased). Their code
+	// is committed unmodified by the onboard ops path, so handlePlan refuses to
+	// mint a Task against one. Empty when no design reader is wired.
+	vendored map[string]bool
 
 	// state carries BOTH pre-existing Tasks (preloaded by the plan assembler,
 	// addressable by updateTask{issueNumber}) and this-run creations.
@@ -297,6 +301,16 @@ func (t *planTap) consume(line []byte) {
 // issues and this run's creations — so a re-plan is additive-only and a crash
 // re-run converges to no-ops.
 func (t *planTap) handlePlan(out *taskplan.PlanTaskOk) {
+	// An importAsIs component's code is vendored byte-identically by the onboard
+	// ops path (delivery/onboard). A coding Task against one would put an agent
+	// to work editing imported source, which is the one thing import-as-is
+	// exists to prevent — so the platform refuses the write rather than trusting
+	// the planner to have honoured the same rule in skills/task-planning.
+	if t.isVendored(out.Component) {
+		slog.InfoContext(t.ctx, "plan tap: skipped Task for an importAsIs component — its code is vendored, not written",
+			"component", out.Component, "title", out.Title)
+		return
+	}
 	slug := titleSlug(out.Title)
 	norm := normalizeTitle(out.Title)
 	if slug != "" && (t.existingSlugs[slug] || t.createdSlugs[slug]) {
@@ -352,6 +366,16 @@ func (t *planTap) appPathFor(component string) string {
 		return ""
 	}
 	return t.appPaths[strings.ToLower(strings.TrimSpace(component))]
+}
+
+// isVendored reports whether the design marks this component importAsIs. False
+// when no design reader is wired — an unreadable design must not silently drop
+// every Task in the plan.
+func (t *planTap) isVendored(component string) bool {
+	if len(t.vendored) == 0 {
+		return false
+	}
+	return t.vendored[strings.ToLower(strings.TrimSpace(component))]
 }
 
 // issueForComponent resolves a dependency's component name to the issue this
