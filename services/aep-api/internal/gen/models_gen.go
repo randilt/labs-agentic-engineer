@@ -64,17 +64,38 @@ func (e BuildSummaryStatus) Valid() bool {
 	}
 }
 
+// Defines values for ComponentDependenciesSourceMode.
+const (
+	ImportAsIs ComponentDependenciesSourceMode = "importAsIs"
+	Modernize  ComponentDependenciesSourceMode = "modernize"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDependenciesSourceMode enum.
+func (e ComponentDependenciesSourceMode) Valid() bool {
+	switch e {
+	case ImportAsIs:
+		return true
+	case Modernize:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeployStageValidation.
 const (
-	DeployStageValidationAwaitingFix  DeployStageValidation = "awaiting-fix"
-	DeployStageValidationFailed       DeployStageValidation = "failed"
-	DeployStageValidationInconclusive DeployStageValidation = "inconclusive"
-	DeployStageValidationNone         DeployStageValidation = "none"
-	DeployStageValidationPartial      DeployStageValidation = "partial"
-	DeployStageValidationPassed       DeployStageValidation = "passed"
-	DeployStageValidationRunning      DeployStageValidation = "running"
-	DeployStageValidationSkipped      DeployStageValidation = "skipped"
-	DeployStageValidationUnreported   DeployStageValidation = "unreported"
+	DeployStageValidationAwaitingFix          DeployStageValidation = "awaiting-fix"
+	DeployStageValidationAwaitingParityReview DeployStageValidation = "awaiting-parity-review"
+	DeployStageValidationCutoverComplete      DeployStageValidation = "cutover-complete"
+	DeployStageValidationFailed               DeployStageValidation = "failed"
+	DeployStageValidationInconclusive         DeployStageValidation = "inconclusive"
+	DeployStageValidationNone                 DeployStageValidation = "none"
+	DeployStageValidationParityMismatchMerged DeployStageValidation = "parity-mismatch-merged"
+	DeployStageValidationPartial              DeployStageValidation = "partial"
+	DeployStageValidationPassed               DeployStageValidation = "passed"
+	DeployStageValidationRunning              DeployStageValidation = "running"
+	DeployStageValidationSkipped              DeployStageValidation = "skipped"
+	DeployStageValidationUnreported           DeployStageValidation = "unreported"
 )
 
 // Valid indicates whether the value is a known member of the DeployStageValidation enum.
@@ -82,11 +103,17 @@ func (e DeployStageValidation) Valid() bool {
 	switch e {
 	case DeployStageValidationAwaitingFix:
 		return true
+	case DeployStageValidationAwaitingParityReview:
+		return true
+	case DeployStageValidationCutoverComplete:
+		return true
 	case DeployStageValidationFailed:
 		return true
 	case DeployStageValidationInconclusive:
 		return true
 	case DeployStageValidationNone:
+		return true
+	case DeployStageValidationParityMismatchMerged:
 		return true
 	case DeployStageValidationPartial:
 		return true
@@ -231,14 +258,17 @@ func (e RunCycleViewKind) Valid() bool {
 
 // Defines values for RunCycleViewMergeVerdict.
 const (
-	Declined RunCycleViewMergeVerdict = "declined"
-	Refused  RunCycleViewMergeVerdict = "refused"
+	Declined   RunCycleViewMergeVerdict = "declined"
+	ParityHold RunCycleViewMergeVerdict = "parity-hold"
+	Refused    RunCycleViewMergeVerdict = "refused"
 )
 
 // Valid indicates whether the value is a known member of the RunCycleViewMergeVerdict enum.
 func (e RunCycleViewMergeVerdict) Valid() bool {
 	switch e {
 	case Declined:
+		return true
+	case ParityHold:
 		return true
 	case Refused:
 		return true
@@ -718,11 +748,20 @@ type ComponentConfig struct {
 	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
-// ComponentDependencies One component's dependencies with read-time computed status/reason (list-design-dependencies) — the console's single dependency-status read model.
+// ComponentDependencies One component's dependencies with read-time computed status/reason (list-design-dependencies) — the console's single dependency-status read model. sourceMode and modernizes are the onboarding pairing the console's component cards and flip-to-modernize CTA read; absent on a platform-generated component.
 type ComponentDependencies struct {
 	ComponentName string       `json:"componentName"`
 	Dependencies  []Dependency `json:"dependencies"`
+
+	// Modernizes The importAsIs sibling this modernize component replaces.
+	Modernizes string `json:"modernizes,omitempty"`
+
+	// SourceMode Onboarding source mode. Absent on a platform-generated component.
+	SourceMode ComponentDependenciesSourceMode `json:"sourceMode,omitempty"`
 }
+
+// ComponentDependenciesSourceMode Onboarding source mode. Absent on a platform-generated component.
+type ComponentDependenciesSourceMode string
 
 // ComponentList defines model for ComponentList.
 type ComponentList struct {
@@ -871,7 +910,7 @@ type DeployStage struct {
 	Status string `json:"status"`
 
 	// Validation Validation state of the newest milestone run. This MIRRORS the run's verdict rather than folding it, so the chip says what the run concluded: a fold would have to discard `partial`, `inconclusive` and `unreported` at exactly the surface that needs them, and `completed` never said whether anything passed.
-	// Three LIFECYCLE values: none (the run has not reached validation), running (a validation CYCLE is in flight — not merely a live run with no verdict yet) and awaiting-fix (validation failed and the run is repairing it — the work in flight is a CODING cycle, which is why the state names the implementation rather than validation). The rest are the verdict verbatim. They are mutually exclusive in time, so nothing is hidden behind another.
+	// LIFECYCLE values: none (the run has not reached validation), running (a validation CYCLE is in flight — not merely a live run with no verdict yet), awaiting-fix (validation failed and the run is repairing it — the work in flight is a CODING cycle, which is why the state names the implementation rather than validation), and awaiting-parity-review (a dual-endpoint parity validation PR is this run's work but waits for a human to merge; the run has settled), cutover-complete (the human merged a matching parity PR; edges were rewritten and the legacy component torn down), and parity-mismatch-merged (the human merged a mismatched parity PR; cutover did not fire). The rest are the verdict verbatim. They are mutually exclusive in time, so nothing is hidden behind another.
 	// passed (every criterion was automated and passed), partial (some passed, none failed, some were never covered), failed (a criterion asserted and lost), inconclusive (no test results at all), unreported (no usable report at the validation cycle's merge commit), skipped (no acceptance criteria, and incident runs, which get no validation cycle).
 	// failed and unreported fail the run only once its validation attempts are spent: while attempts remain the run repairs and re-validates, and reads awaiting-fix in the meantime.
 	// The report path and per-cycle detail live on the version's run story (list-build-runs).
@@ -882,7 +921,7 @@ type DeployStage struct {
 }
 
 // DeployStageValidation Validation state of the newest milestone run. This MIRRORS the run's verdict rather than folding it, so the chip says what the run concluded: a fold would have to discard `partial`, `inconclusive` and `unreported` at exactly the surface that needs them, and `completed` never said whether anything passed.
-// Three LIFECYCLE values: none (the run has not reached validation), running (a validation CYCLE is in flight — not merely a live run with no verdict yet) and awaiting-fix (validation failed and the run is repairing it — the work in flight is a CODING cycle, which is why the state names the implementation rather than validation). The rest are the verdict verbatim. They are mutually exclusive in time, so nothing is hidden behind another.
+// LIFECYCLE values: none (the run has not reached validation), running (a validation CYCLE is in flight — not merely a live run with no verdict yet), awaiting-fix (validation failed and the run is repairing it — the work in flight is a CODING cycle, which is why the state names the implementation rather than validation), and awaiting-parity-review (a dual-endpoint parity validation PR is this run's work but waits for a human to merge; the run has settled), cutover-complete (the human merged a matching parity PR; edges were rewritten and the legacy component torn down), and parity-mismatch-merged (the human merged a mismatched parity PR; cutover did not fire). The rest are the verdict verbatim. They are mutually exclusive in time, so nothing is hidden behind another.
 // passed (every criterion was automated and passed), partial (some passed, none failed, some were never covered), failed (a criterion asserted and lost), inconclusive (no test results at all), unreported (no usable report at the validation cycle's merge commit), skipped (no acceptance criteria, and incident runs, which get no validation cycle).
 // failed and unreported fail the run only once its validation attempts are spent: while attempts remain the run repairs and re-validates, and reads awaiting-fix in the meantime.
 // The report path and per-cycle detail live on the version's run story (list-build-runs).
@@ -1383,7 +1422,7 @@ type RunCycleView struct {
 	MergeReason string `json:"mergeReason,omitempty"`
 	MergeSha    string `json:"mergeSha,omitempty"`
 
-	// MergeVerdict Why this cycle's pull request did NOT merge, when something decided so: `declined` is the auto-merge policy saying the pull request is not this run's work, `refused` is the host declining an open pull request (a conflict — a conflict issue is minted and the next cycle works it). Absent on a cycle whose merge was never decided against, which includes every cycle that merged: a merge is recorded by `mergeSha`, and each fresh decision overwrites this field, so a declined pull request that later merges does not keep the verdict.
+	// MergeVerdict Why this cycle's pull request did NOT merge, when something decided so: `declined` is the auto-merge policy saying the pull request is not this run's work, `refused` is the host declining an open pull request (a conflict — a conflict issue is minted and the next cycle works it), `parity-hold` is the policy recognising a dual-endpoint parity validation PR as this run's work but leaving the merge for a human. Absent on a cycle whose merge was never decided against, which includes every cycle that merged: a merge is recorded by `mergeSha`, and each fresh decision overwrites this field, so a declined pull request that later merges does not keep the verdict.
 	MergeVerdict RunCycleViewMergeVerdict `json:"mergeVerdict,omitempty"`
 
 	// PrDraft Is the recorded pull request still a draft? A draft is the agent saying it is not finished, so nothing merges while this is true — recorded because a cycle sitting behind a draft is otherwise indistinguishable from one whose agent never opened a pull request.
@@ -1406,7 +1445,7 @@ type RunCycleView struct {
 // RunCycleViewKind defines model for RunCycleView.Kind.
 type RunCycleViewKind string
 
-// RunCycleViewMergeVerdict Why this cycle's pull request did NOT merge, when something decided so: `declined` is the auto-merge policy saying the pull request is not this run's work, `refused` is the host declining an open pull request (a conflict — a conflict issue is minted and the next cycle works it). Absent on a cycle whose merge was never decided against, which includes every cycle that merged: a merge is recorded by `mergeSha`, and each fresh decision overwrites this field, so a declined pull request that later merges does not keep the verdict.
+// RunCycleViewMergeVerdict Why this cycle's pull request did NOT merge, when something decided so: `declined` is the auto-merge policy saying the pull request is not this run's work, `refused` is the host declining an open pull request (a conflict — a conflict issue is minted and the next cycle works it), `parity-hold` is the policy recognising a dual-endpoint parity validation PR as this run's work but leaving the merge for a human. Absent on a cycle whose merge was never decided against, which includes every cycle that merged: a merge is recorded by `mergeSha`, and each fresh decision overwrites this field, so a declined pull request that later merges does not keep the verdict.
 type RunCycleViewMergeVerdict string
 
 // RunCycleViewValidationVerdict What THIS validation attempt concluded, from the report at its own `mergeSha`. Set on validation cycles only, and only once the attempt settles. The run carries the latest attempt's verdict; this is how a self-healed run shows that an earlier attempt failed.

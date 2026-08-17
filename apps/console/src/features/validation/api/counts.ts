@@ -44,7 +44,16 @@ import { useValidationCriteria, useValidationReport } from "./queries";
 // reads as "everything failed" about runs whose actual story is "nothing was
 // joined". A lifecycle state sitting over an `unreported` verdict resolves to no
 // counts by the same route — its report genuinely does not exist.
-const COUNTABLE = new Set(["passed", "partial", "failed", "awaiting-fix", "running"]);
+const COUNTABLE = new Set([
+  "passed",
+  "partial",
+  "failed",
+  "awaiting-fix",
+  "awaiting-parity-review",
+  "cutover-complete",
+  "parity-mismatch-merged",
+  "running",
+]);
 
 /**
  * What the deployed version's validation is, in the two facts a surface outside the

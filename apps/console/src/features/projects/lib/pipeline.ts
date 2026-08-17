@@ -140,6 +140,13 @@ export function validationState(deployValidation: string, verdict: string): stri
   // skew this once guarded against is one interval of a merely stale "Validating",
   // where a revalidation mislabelled is persistent.
   if (deployValidation === "running") return deployValidation;
+  if (
+    deployValidation === "awaiting-parity-review" ||
+    deployValidation === "cutover-complete" ||
+    deployValidation === "parity-mismatch-merged"
+  ) {
+    return deployValidation;
+  }
   // `awaiting-fix` keeps the guard: it can only sit over a verdict the loop repeats,
   // so pairing it with a green one is skew by definition, not a state.
   if (
@@ -193,6 +200,15 @@ export function validationView(
     // resolving it.
     case "awaiting-fix":
       return { label: "awaiting fix", tone: "warning" };
+
+    case "awaiting-parity-review":
+      return { label: "awaiting parity merge", tone: "warning" };
+
+    case "cutover-complete":
+      return { label: "cut over", tone: "success" };
+
+    case "parity-mismatch-merged":
+      return { label: "parity mismatch", tone: "error" };
 
     // The rest are the run's verdict verbatim, which is why each label can name
     // the outcome instead of naming an artifact to go and open.

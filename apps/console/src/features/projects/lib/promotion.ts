@@ -136,6 +136,8 @@ export function allConnectionsSet(
 const BLOCKING_VALIDATION = new Set([
   "running",
   "awaiting-fix",
+  "awaiting-parity-review",
+  "parity-mismatch-merged",
   "failed",
   "unreported",
 ]);

@@ -119,6 +119,19 @@ describe("gateRows", () => {
     ]);
   });
 
+  it("reuses the same rail for onboard gates with vendoring copy", () => {
+    const onboard = (
+      issueNumber: number,
+      execStatus?: string,
+      derivedStatus = "pending",
+    ): TaskView => ({
+      ...gate(issueNumber, "Onboard component: orders-api", execStatus, derivedStatus),
+      executorClass: "onboard",
+    });
+    expect(gateRows([onboard(1, "running")])[0]?.label).toBe("vendoring");
+    expect(gateRows([onboard(2, "succeeded", "merged")])[0]?.label).toBe("vendored");
+  });
+
   // A SUCCEEDED provisioning run against a still-open gate means whatever was
   // driving it has finished and the gate is still open: the next move is a
   // person's, exactly as if no run had ever existed.

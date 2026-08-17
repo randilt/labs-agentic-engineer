@@ -61,12 +61,21 @@ function isOpen(gate: TaskView): boolean {
  */
 export function gateRows(gates: TaskView[]): GateRow[] {
   return gates.map((gate) => {
+    const onboard = gate.executorClass === "onboard";
     if (!isOpen(gate)) {
-      return { gate, state: "done" as StageState, label: "provisioned" };
+      return {
+        gate,
+        state: "done" as StageState,
+        label: onboard ? "vendored" : "provisioned",
+      };
     }
     switch (gateDrive(gate)) {
       case "provisioning":
-        return { gate, state: "active" as StageState, label: "provisioning" };
+        return {
+          gate,
+          state: "active" as StageState,
+          label: onboard ? "vendoring" : "provisioning",
+        };
       case "failed":
         return { gate, state: "failed" as StageState, label: "failed" };
       default:

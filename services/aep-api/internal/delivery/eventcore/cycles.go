@@ -81,6 +81,9 @@ func (e *Events) noteCycleMergeDecision(ctx context.Context, run *delivery.Miles
 	verdict := ""
 	if !decision.Merge {
 		verdict = delivery.CycleMergeDeclined
+		if decision.Hold {
+			verdict = delivery.CycleMergeParityHold
+		}
 	}
 	if err := e.p.Cycles.NoteMergeDecision(ctx, cycle.ID, decision.Matched, verdict, decision.Reason); err != nil {
 		slog.WarnContext(ctx, "eventcore: note cycle merge decision failed",

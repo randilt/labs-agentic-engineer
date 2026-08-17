@@ -1,0 +1,19 @@
+{
+  "name": "orders-api-next",
+  "type": "service",
+  "version": "0.1.0",
+  "language": "Go",
+  "buildpack": "docker",
+  "appPath": "orders-api-next",
+  "entrypoint": "deployment/service",
+  "exposure": "intranet",
+  "dependencies": [],
+  "description": "Modernize rebuild of orders-api. Same create/get/list contract. Takes over wiring after a matching parity merge.",
+  "sourceMode": "modernize",
+  "source": {
+    "repo": "acme/orders",
+    "ref": "main",
+    "subpath": "."
+  },
+  "modernizes": "orders-api"
+}

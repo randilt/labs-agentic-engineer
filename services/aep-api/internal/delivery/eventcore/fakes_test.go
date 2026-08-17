@@ -128,6 +128,20 @@ func (f *fakeRuns) BumpBudget(_ context.Context, _ string, counter delivery.RunB
 	return nil
 }
 
+func (f *fakeRuns) LatestRunForMilestone(_ context.Context, _, _ string, milestone int) (*delivery.MilestoneRun, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.rows {
+		if f.rows[i].MilestoneNumber == milestone {
+			return &f.rows[i], nil
+		}
+	}
+	return nil, nil
+}
+
 // ---- cycles ---------------------------------------------------------------
 
 type fakeCycles struct {
@@ -627,5 +641,17 @@ func (f *fakeComponents) EnsureComponent(_ context.Context, _, _, component stri
 	if fail {
 		return fmt.Errorf("design has no component %q", component)
 	}
+	return nil
+}
+
+type fakeCutoverer struct {
+	mu    sync.Mutex
+	calls []CutoverRequest
+}
+
+func (f *fakeCutoverer) OnParityMerged(_ context.Context, req CutoverRequest) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, req)
 	return nil
 }

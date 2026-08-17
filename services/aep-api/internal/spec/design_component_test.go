@@ -174,6 +174,49 @@ func TestDesignComponent_ListDependencies_ComputesStatusPerKind(t *testing.T) {
 	}
 }
 
+func TestDesignComponent_ListDependencies_ProjectsSourceMode(t *testing.T) {
+	t.Parallel()
+	h := newDesignHarness(t, map[string]string{
+		spec.DesignRootFile: "Overview.\n",
+		"components/orders-api/design.json": `{
+  "name": "orders-api",
+  "type": "service",
+  "sourceMode": "importAsIs",
+  "source": {"repo": "acme/legacy", "ref": "abc123", "subpath": "."},
+  "dependencies": []
+}`,
+		"components/orders-api-next/design.json": `{
+  "name": "orders-api-next",
+  "type": "service",
+  "sourceMode": "modernize",
+  "source": {"repo": "acme/legacy", "ref": "abc123", "subpath": "."},
+  "modernizes": "orders-api",
+  "dependencies": [{"kind": "component", "name": "orders-api"}]
+}`,
+	}, nil)
+
+	resp := h.AsOrg("acme").Get(depsPath)
+	if resp.Code != 200 {
+		t.Fatalf("list: want 200, got %d body=%s", resp.Code, resp.Body.String())
+	}
+	var got []gen.ComponentDependencies
+	if err := json.Unmarshal(resp.Body.Bytes(), &got); err != nil {
+		t.Fatalf("body: %v\n%s", err, resp.Body.String())
+	}
+	byName := map[string]gen.ComponentDependencies{}
+	for _, c := range got {
+		byName[c.ComponentName] = c
+	}
+	legacy := byName["orders-api"]
+	if legacy.SourceMode != gen.ImportAsIs || legacy.Modernizes != "" {
+		t.Errorf("orders-api: sourceMode=%q modernizes=%q, want importAsIs/", legacy.SourceMode, legacy.Modernizes)
+	}
+	next := byName["orders-api-next"]
+	if next.SourceMode != gen.Modernize || next.Modernizes != "orders-api" {
+		t.Errorf("orders-api-next: sourceMode=%q modernizes=%q, want modernize/orders-api", next.SourceMode, next.Modernizes)
+	}
+}
+
 // TestDesignComponent_ListDependencies_NoDesignIs404 asserts an absent design
 // (no design.md at all) surfaces as 404, not an empty list or a 500.
 func TestDesignComponent_ListDependencies_NoDesignIs404(t *testing.T) {

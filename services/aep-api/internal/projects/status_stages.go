@@ -62,6 +62,17 @@ const (
 	// is what is being fixed — rendering the bare `failed` verdict here would read
 	// as terminal while the platform is actively resolving it.
 	validationAwaitingFix = "awaiting-fix"
+	// validationAwaitingParityReview is a dual-endpoint parity validation whose
+	// pull request is this run's work but waits for a human to merge. The run has
+	// settled; cutover waits on that merge. Distinct from awaiting-fix: nothing
+	// is being repaired.
+	validationAwaitingParityReview = "awaiting-parity-review"
+	// validationCutoverComplete: the human merged a matching parity PR. Edges
+	// were rewritten and the legacy component torn down. Does not block promotion.
+	validationCutoverComplete = "cutover-complete"
+	// validationParityMismatchMerged: the human merged a mismatched parity PR.
+	// Cutover did not fire. Blocks promotion until a deliberate override.
+	validationParityMismatchMerged = "parity-mismatch-merged"
 )
 
 // milestoneRunRows is the narrow port over the milestone_runs index: the status
@@ -250,13 +261,31 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 // calling every such run "validating"), and a live run holding a REPAIRABLE verdict,
 // which is mid-loop rather than finished.
 func (s *Service) validationStage(ctx context.Context, orgID string, run *delivery.MilestoneRun) (string, error) {
-	state, decided := validationStageFromRun(run)
-	if decided {
-		return state, nil
+	if run == nil {
+		return validationNone, nil
 	}
 	cycle, err := s.runReader.LatestCycle(ctx, orgID, run.ID)
 	if err != nil {
 		return "", fmt.Errorf("latest cycle for run %s: %w", run.ID, err)
+	}
+	if cycle != nil {
+		switch cycle.CutoverVerdict {
+		case delivery.CycleCutoverComplete:
+			return validationCutoverComplete, nil
+		case delivery.CycleCutoverMismatch:
+			return validationParityMismatchMerged, nil
+		}
+		// A parity-hold cycle wins over the stored verdict even on a settled run:
+		// the report is real, but the PR is still waiting for a human. MergeSHA
+		// filling in (the merge webhook) is what drops this back to the verdict.
+		if cycle.Kind == delivery.CycleKindValidation &&
+			cycle.MergeVerdict == delivery.CycleMergeParityHold && cycle.MergeSHA == "" {
+			return validationAwaitingParityReview, nil
+		}
+	}
+	state, decided := validationStageFromRun(run)
+	if decided {
+		return state, nil
 	}
 	if cycle != nil && cycle.Kind == delivery.CycleKindValidation && cycle.EndedAt == nil {
 		return validationRunning, nil

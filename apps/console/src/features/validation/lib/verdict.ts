@@ -76,6 +76,12 @@ function loopTail(state: string, repairing: boolean): string {
   switch (state) {
     case "awaiting-fix":
       return "The implementation is being fixed. Validation will run again.";
+    case "awaiting-parity-review":
+      return "Parity validation passed on both endpoints. Merge the pull request to cut over to the modernized component.";
+    case "cutover-complete":
+      return "Parity matched. The modernized component now owns the wiring; the legacy sibling was torn down.";
+    case "parity-mismatch-merged":
+      return "The parity pull request merged with mismatched reports. Cutover did not fire; overriding is a separate action.";
     case "running":
       // "has been fixed and deployed" is a fact about a REPAIR — a repeat attempt on
       // the same run can only exist once the repair issues closed, the working set

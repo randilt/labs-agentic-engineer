@@ -14,3 +14,8 @@ drift.
   run (2026-08-02, pass band 93), frozen as produced: `lunch-api` +
   `lunch-webapp` components with design.json / openapi.yaml / wireframes,
   design.cell, and validation-criteria.json.
+- `onboard-orders-pair/` — hand-authored onboarding pairing: `orders-api`
+  (`importAsIs`) beside `orders-api-next` (`modernize`, `modernizes:
+  orders-api`). Used by the task-planning eval that asserts the legacy sibling
+  gets no Task. Not a captured live run — live e2e against wso2-open-operations
+  is out of band.

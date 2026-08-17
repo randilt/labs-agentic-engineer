@@ -38,11 +38,19 @@ export const VALIDATION_CONTEXT_FILE = "/tmp/validation-context.json";
 export interface ComponentEndpoint {
   component: string;
   url: string;
+  role?: "legacy" | "modernize";
+  pair?: string;
+}
+
+export interface ParityPair {
+  legacy: string;
+  modernize: string;
 }
 
 export interface ValidationContext {
   endpoints: ComponentEndpoint[];
   criteriaPath: string;
+  pairs?: ParityPair[];
 }
 
 export interface FetchValidationContextOptions {

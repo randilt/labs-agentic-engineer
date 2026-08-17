@@ -110,7 +110,7 @@ func (l *loop) runCycle(ctx workflow.Context, kind string, anchorIssue int) (cyc
 	l.st.CycleKind = kind
 	l.st.CycleAttempt = 0
 	l.st.CyclePR = 0
-	l.prNumber, l.mergeSHA = 0, ""
+	l.prNumber, l.mergeSHA, l.parityHold = 0, "", false
 	// Held on the loop because the validation verdict is written AFTER this returns:
 	// it is derived from the report at the cycle's own merge commit, which does not
 	// exist until the cycle has landed and closed.
@@ -131,6 +131,13 @@ func (l *loop) runCycle(ctx workflow.Context, kind string, anchorIssue int) (cyc
 			return cycleNone, err
 		}
 		return res, nil
+	}
+
+	if l.parityHold {
+		// The PR is this run's work but stays open for a human. Leave the cycle
+		// OPEN so the merge webhook can stamp MergeSHA via closeCycle; skip
+		// builds/deploy — nothing landed on main.
+		return cycleGreen, nil
 	}
 
 	if err := l.finishCycle(ctx, cycleID, l.mergeSHA); err != nil {
@@ -283,6 +290,15 @@ func (l *loop) dispatchUntilLanded(ctx workflow.Context, kind string, anchorIssu
 				l.st.CyclePR = facts.PRNumber
 				stopDeadline()
 				// Landed: the verdict is the build phase's, not this loop's.
+				return true, cycleNone, nil
+			}
+			if facts.MergeVerdict == delivery.CycleMergeParityHold && facts.Branch != "" {
+				// Report lives on the PR branch, not main. Pin the later
+				// readVerdict to that branch; skip builds/deploy.
+				l.mergeSHA, l.prNumber = facts.Branch, facts.PRNumber
+				l.st.CyclePR = facts.PRNumber
+				l.parityHold = true
+				stopDeadline()
 				return true, cycleNone, nil
 			}
 		}

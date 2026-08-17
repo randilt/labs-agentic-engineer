@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol/webhook"
 )
 
@@ -42,17 +43,18 @@ import (
 const platformBot = "aep-platform[bot]"
 
 type harness struct {
-	events *Events
-	router *webhook.Router
-	runs   *fakeRuns
-	cycles *fakeCycles
-	issues *fakeIssues
-	prs    *fakePRs
-	merger *fakeMerger
-	builds *fakeBuilds
-	comps  *fakeComponents
-	sup    *fakeSupervisor
-	oracle *fakeOracle
+	events  *Events
+	router  *webhook.Router
+	runs    *fakeRuns
+	cycles  *fakeCycles
+	issues  *fakeIssues
+	prs     *fakePRs
+	merger  *fakeMerger
+	builds  *fakeBuilds
+	comps   *fakeComponents
+	sup     *fakeSupervisor
+	oracle  *fakeOracle
+	cutover *fakeCutoverer
 }
 
 // newHarness wires the event plane onto a real router. rows seeds the run
@@ -60,15 +62,16 @@ type harness struct {
 func newHarness(t *testing.T, rows ...delivery.MilestoneRun) *harness {
 	t.Helper()
 	h := &harness{
-		runs:   newFakeRuns(rows...),
-		cycles: newFakeCycles(nil),
-		issues: newFakeIssues(),
-		prs:    &fakePRs{},
-		merger: &fakeMerger{},
-		builds: newFakeBuilds(),
-		comps:  &fakeComponents{},
-		sup:    &fakeSupervisor{},
-		oracle: &fakeOracle{has: true},
+		runs:    newFakeRuns(rows...),
+		cycles:  newFakeCycles(nil),
+		issues:  newFakeIssues(),
+		prs:     &fakePRs{},
+		merger:  &fakeMerger{},
+		builds:  newFakeBuilds(),
+		comps:   &fakeComponents{},
+		sup:     &fakeSupervisor{},
+		oracle:  &fakeOracle{has: true},
+		cutover: &fakeCutoverer{},
 	}
 	// The real supervisor admits the run row as part of starting a run.
 	h.sup.admits = h.runs
@@ -85,6 +88,7 @@ func newHarness(t *testing.T, rows ...delivery.MilestoneRun) *harness {
 		Criteria:       h.oracle,
 		Signaler:       h.sup,
 		Starter:        h.sup,
+		Cutoverer:      h.cutover,
 		PlatformSender: platformBot,
 	})
 	h.router = webhook.NewRouter()
@@ -271,6 +275,29 @@ func TestPullRequestOpened_DeclinedWhenItResolvesNothingInTheMilestone(t *testin
 	}
 }
 
+func TestPullRequestOpened_ParityHoldSignalsWithoutMerging(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
+	h.issues.withWork(7, 12)
+	h.issues.byMilestone[7] = append(h.issues.byMilestone[7], sourcecontrol.IssueInfo{
+		Number: 16, State: "open", Labels: []string{delivery.LabelValidationWork, delivery.LabelParityWork},
+	})
+
+	if err := h.deliver(t, "pull_request", prBody("opened", "aep/m7-c1", "Resolves #16", 42, false, false, "")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.merger.merged) != 0 {
+		t.Fatalf("a parity validation pull request must not auto-merge, got %v", h.merger.merged)
+	}
+	if h.cycles.latest.MergeVerdict != delivery.CycleMergeParityHold {
+		t.Fatalf("verdict = %q, want %q", h.cycles.latest.MergeVerdict, delivery.CycleMergeParityHold)
+	}
+	sigs := h.sup.named(delivery.SigRunPRMerged)
+	if len(sigs) != 1 || sigs[0].MergeSHA != "" || sigs[0].Branch != "aep/m7-c1" {
+		t.Fatalf("parity hold must wake the landing wait without a merge SHA, got %+v", sigs)
+	}
+}
+
 // A verdict is a snapshot of the LATEST decision: the agent clears a decline by
 // pushing, and the row must not keep saying "declined" after the merge lands.
 func TestPullRequestSynchronize_AMergingDecisionClearsAnEarlierDecline(t *testing.T) {
@@ -381,6 +408,65 @@ func TestPullRequestMerged_BuildsEveryTouchedComponentAtTheMergeSHA(t *testing.T
 	}
 	if sigs := h.sup.named(delivery.SigRunPRMerged); len(sigs) != 1 || sigs[0].MergeSHA != "abc123def456789" {
 		t.Fatalf("the supervisor must be told the PR merged, got %+v", sigs)
+	}
+	if len(h.cutover.calls) != 0 {
+		t.Fatalf("an ordinary merge must never cut over, got %+v", h.cutover.calls)
+	}
+}
+
+func TestPullRequestMerged_ParityHoldOnSettledRunCutsOver(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateSucceeded))
+	cycle := aCycle("cycle-1", "run-1")
+	cycle.Kind = delivery.CycleKindValidation
+	cycle.MergeVerdict = delivery.CycleMergeParityHold
+	cycle.PRNumber = 42
+	cycle.ValidationIssue = 16
+	h.cycles.latest = cycle
+
+	if err := h.deliver(t, "pull_request", prBody("closed", "aep/m7-c1", "Resolves #16", 42, false, true, "abc123def456789")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.cutover.calls) != 1 {
+		t.Fatalf("parity merge must cut over, got %d calls", len(h.cutover.calls))
+	}
+	got := h.cutover.calls[0]
+	if got.MergeSHA != "abc123def456789" || got.CycleID != "cycle-1" || got.IssueNumber != 16 {
+		t.Fatalf("cutover request = %+v", got)
+	}
+	if len(h.cycles.closed) != 1 || h.cycles.closed[0] != "cycle-1:abc123def456789" {
+		t.Fatalf("parity merge must stamp the merge SHA, got %v", h.cycles.closed)
+	}
+}
+
+func TestPullRequestMerged_OrdinaryValidationNeverCutsOver(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateSucceeded))
+	cycle := aCycle("cycle-1", "run-1")
+	cycle.Kind = delivery.CycleKindValidation
+	cycle.PRNumber = 42
+	cycle.MergeSHA = "abc123def456789"
+	h.cycles.latest = cycle
+
+	if err := h.deliver(t, "pull_request", prBody("closed", "aep/m7-c1", "Resolves #15", 42, false, true, "abc123def456789")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.cutover.calls) != 0 {
+		t.Fatalf("ordinary validation merge must never cut over, got %+v", h.cutover.calls)
+	}
+}
+
+func TestPullRequestMerged_ParityHoldWrongPRNeverCutsOver(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateSucceeded))
+	cycle := aCycle("cycle-1", "run-1")
+	cycle.Kind = delivery.CycleKindValidation
+	cycle.MergeVerdict = delivery.CycleMergeParityHold
+	cycle.PRNumber = 42
+	h.cycles.latest = cycle
+
+	if err := h.deliver(t, "pull_request", prBody("closed", "aep/m7-c1", "Resolves #16", 99, false, true, "abc123def456789")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.cutover.calls) != 0 {
+		t.Fatalf("a different PR must not cut over, got %+v", h.cutover.calls)
 	}
 }
 

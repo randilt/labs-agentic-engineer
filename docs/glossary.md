@@ -358,7 +358,26 @@ has a verdict.
 An `aep:provision` issue. Never agent work — a **dispatch hold**: while one is
 open the run dispatches nothing, and a hand-filed one mid-run is a deliberate
 human brake. Gates are minted and resolved by `dependencies/provisioning`, and
-carry no `aep` label so they cannot hold the settle predicate open.
+carry no `aep` label so they cannot hold the settle predicate open. Import-as-is
+vendoring uses the same hold via `aep:onboard`.
+
+### `sourceMode`
+Per-component onboarding origin in `design.json`. Absent means platform-generated
+(today's only behaviour — absence, not a default). `importAsIs` vendors the
+source tree unmodified; `modernize` rebuilds through the normal coding pipeline
+against a paired `importAsIs` sibling named by `modernizes`.
+
+### Parity validation
+A dual-endpoint validation cycle: the same e2e suite runs against the live
+legacy endpoint and the rebuilt modernize endpoint, then diffs. The validation
+issue carries `aep:parity`. Auto-merge declines; the run settles as
+`awaiting-parity-review`. Cutover waits on a human merge.
+
+### Cutover
+Mechanical follow-up after a human merges a parity PR whose `parity-diff.json`
+says the reports matched: rewrite sibling `dependencies[]` from the legacy name
+to the modernize name, then tear down the legacy Component. A mismatched merge
+records `parity-mismatch-merged` and does **not** cut over.
 
 ### Ledger issue
 A bare human issue that joined a milestone carrying none of the platform's

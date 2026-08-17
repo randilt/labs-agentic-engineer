@@ -225,6 +225,24 @@ describe("validationView", () => {
       validationView("failed")?.tone,
     );
   });
+  it("awaiting-parity-review → awaiting parity merge (warning)", () => {
+    expect(validationView("awaiting-parity-review")).toEqual({
+      label: "awaiting parity merge",
+      tone: "warning",
+    });
+  });
+  it("cutover-complete → cut over (success)", () => {
+    expect(validationView("cutover-complete")).toEqual({
+      label: "cut over",
+      tone: "success",
+    });
+  });
+  it("parity-mismatch-merged → parity mismatch (error)", () => {
+    expect(validationView("parity-mismatch-merged")).toEqual({
+      label: "parity mismatch",
+      tone: "error",
+    });
+  });
   // deploy.validation MIRRORS the verdict, so every label names the outcome
   // rather than naming an artifact the reader would have to open to find it.
   it("passed → validated (success)", () => {
@@ -280,7 +298,7 @@ describe("validationView", () => {
   // label" the default: a state that gained one by accident would announce itself
   // differently from what it shows, for no reason a reader could see.
   it("carries a spoken form ONLY where a mark carries the meaning", () => {
-    for (const v of ["running", "awaiting-fix", "passed", "failed", "unreported", "skipped"]) {
+    for (const v of ["running", "awaiting-fix", "awaiting-parity-review", "cutover-complete", "parity-mismatch-merged", "passed", "failed", "unreported", "skipped"]) {
       expect(validationView(v)?.spoken, `${v} should not need a spoken form`)
         .toBeUndefined();
     }
@@ -293,6 +311,9 @@ describe("validationView", () => {
   it("maps every verdict the contract can send", () => {
     for (const v of [
       "running",
+      "awaiting-parity-review",
+      "cutover-complete",
+      "parity-mismatch-merged",
       "passed",
       "partial",
       "failed",
@@ -319,8 +340,10 @@ describe("validationState", () => {
     expect(validationState("running", "failed")).toBe("running");
   });
 
-  it("takes the lifecycle when no verdict exists yet — the first attempt", () => {
-    expect(validationState("running", "")).toBe("running");
+  it("takes cutover lifecycle over the stored verdict", () => {
+    expect(validationState("cutover-complete", "passed")).toBe("cutover-complete");
+    expect(validationState("parity-mismatch-merged", "passed")).toBe("parity-mismatch-merged");
+    expect(validationState("awaiting-parity-review", "passed")).toBe("awaiting-parity-review");
   });
 
   // The verdict itself always comes from the run row, which the page scopes more

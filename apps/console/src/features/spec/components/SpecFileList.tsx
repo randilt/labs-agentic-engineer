@@ -91,6 +91,7 @@ export function SpecFileList({
 
   const requirements = files.filter((f) => f.group === "requirements");
   const validation = files.filter((f) => f.group === "validation");
+  const onboarding = files.filter((f) => f.group === "onboarding");
   const design = buildDesignSection(files);
 
   // Per-component expand/collapse — default expanded, remembered by name so
@@ -183,6 +184,7 @@ export function SpecFileList({
 
   return (
     <Box component="nav" aria-label="Spec files" sx={{ py: 1 }}>
+      {onboarding.length > 0 && flatGroup("Onboarding", onboarding)}
       {flatGroup("Requirements", requirements, true)}
 
       {/* Designs — grouped by component, with synthetic diagram entries. */}

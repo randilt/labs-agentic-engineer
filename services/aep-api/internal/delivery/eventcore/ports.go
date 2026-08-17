@@ -59,6 +59,9 @@ type RunStore interface {
 	// BumpBudget increments one of the run's budget counters (the event plane
 	// only ever bumps the build re-trigger tally; the supervisor owns the rest).
 	BumpBudget(ctx context.Context, runID string, counter delivery.RunBudget) error
+	// LatestRunForMilestone returns the newest run of this milestone, terminal
+	// included. Cutover looks this up after a parity-hold run has settled.
+	LatestRunForMilestone(ctx context.Context, orgID, projectID string, milestoneNumber int) (*delivery.MilestoneRun, error)
 }
 
 // MilestoneRef is a milestone the platform knows by NUMBER (the key) with the
@@ -304,4 +307,18 @@ type ValidationOracle interface {
 // import each other.
 type RunStarter interface {
 	StartRun(ctx context.Context, req delivery.StartRunRequest) error
+}
+
+// CutoverRequest is the event plane's hand-off after a human merged a
+// parity-hold validation pull request. MergeSHA is the squash commit; CycleID
+// is the validation cycle that held.
+type CutoverRequest struct {
+	OrgID, ProjectID, MergeSHA, CycleID string
+	IssueNumber                         int
+}
+
+// Cutoverer decides whether a merged parity PR cuts over (rewrite edges +
+// teardown legacy). Satisfied by an app-root adapter over delivery/onboard.
+type Cutoverer interface {
+	OnParityMerged(ctx context.Context, req CutoverRequest) error
 }

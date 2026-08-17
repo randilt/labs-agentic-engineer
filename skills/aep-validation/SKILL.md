@@ -96,8 +96,8 @@ platform fetched them **before you started** and left them at
 cat /tmp/validation-context.json
 ```
 
-The content is `{ "endpoints": [{"component","url"}], "criteriaPath":
-"..." }`. It is present and non-empty whenever you are running: the runner
+The content is `{ "endpoints": [{"component","url","role?","pair?"}], "criteriaPath":
+"..." , "pairs?": [{"legacy","modernize"}] }`. It is present and non-empty whenever you are running: the runner
 exits before starting you if the platform could not resolve it, so there is
 no failure mode here for you to recover from. If the file were somehow
 missing, that is a platform fault — say so in one line and stop. Do not
@@ -261,6 +261,17 @@ batch that severs is a batch you re-run smaller, not one you skip.
 The config writes `test-results/results.json`. The run includes the
 regression set — that's free regression coverage, not an accident.
 
+When the validation context includes `pairs`, run the suite **twice** —
+once per role — before reporting:
+
+1. Point `targets.json` at every endpoint whose `role` is `legacy`, run
+   the suite, save `test-results/results-legacy.json`.
+2. Point `targets.json` at every endpoint whose `role` is `modernize`,
+   run the suite, save `test-results/results.json` (this is the primary
+   run whose report sets the run verdict).
+
+Single-target runs (no `pairs`) skip step 1 and run once as today.
+
 ### 8. HEAL (bounded)
 
 For failures, **Read `references/healing.md` now and follow it as the
@@ -284,6 +295,16 @@ node "$AEP_SKILLS_DIR/aep-validation/scripts/generate-report.mjs" \
   --issue <N> --commit "$(git rev-parse HEAD)"
 ```
 
+When `pairs` was present, pass both result files and emit the diff:
+
+```bash
+node "$AEP_SKILLS_DIR/aep-validation/scripts/generate-report.mjs" \
+  --issue <N> --commit "$(git rev-parse HEAD)" \
+  --results tests/e2e/test-results/results.json \
+  --legacy-results tests/e2e/test-results/results-legacy.json \
+  --diff
+```
+
 Then refresh the repo's committed copy so a human can reproduce the
 report after checkout:
 
@@ -292,7 +313,8 @@ cp "$AEP_SKILLS_DIR/aep-validation/scripts/generate-report.mjs" \
    tests/e2e/scripts/generate-report.mjs
 ```
 
-This writes `tests/validation/report.md` + `report.json`. It reads the
+This writes `tests/validation/report.md` + `report.json`. With `--diff`,
+also `tests/validation/parity-diff.json`. It reads the
 oracle but never writes it — coverage is expressed by each criterion's
 pass/fail in the report, not by a flag in the criteria file. Exit code 2
 means a contract violation: spec titles that don't map to criterion ids
@@ -302,6 +324,9 @@ or a pre-existing spec modified without a heal-log entry (record the
 heal per `references/healing.md`).
 
 **`tests/validation/report.json` is REQUIRED. Commit it with the tests.**
+When parity pairs were validated, **`tests/validation/parity-diff.json` is
+REQUIRED too** — cutover reads it to decide whether legacy and modernize
+matched.
 
 The platform reads it at your pull request's merge commit to decide the
 run's verdict. A merged PR without it fails the whole run with

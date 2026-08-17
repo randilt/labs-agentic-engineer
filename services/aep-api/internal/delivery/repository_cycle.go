@@ -94,6 +94,12 @@ type RunCycleRepository interface {
 	// Returns (nil, nil) when the cycle is absent or already carries a verdict.
 	SetValidationVerdict(ctx context.Context, id, verdict string, issue int) (*RunCycle, error)
 
+	// SetCutoverVerdict records what a parity-PR merge decided. Write-once,
+	// including on a closed cycle: the run has already settled as
+	// awaiting-parity-review, and this write is the human merge's outcome.
+	// Returns (nil, nil) when the cycle is absent or already carries a verdict.
+	SetCutoverVerdict(ctx context.Context, id, verdict string) (*RunCycle, error)
+
 	// Latest returns a run's newest cycle, or (nil, nil) when the run has not
 	// dispatched yet. This is how loop POSITION is read — never from a stored
 	// phase enum on the run row.
@@ -248,6 +254,23 @@ func (r *runCycleRepository) SetValidationVerdict(ctx context.Context, id, verdi
 			"validation_verdict": verdict,
 			"validation_issue":   issue,
 		})
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, nil
+	}
+	return r.getByID(ctx, id)
+}
+
+func (r *runCycleRepository) SetCutoverVerdict(ctx context.Context, id, verdict string) (*RunCycle, error) {
+	if verdict != CycleCutoverComplete && verdict != CycleCutoverMismatch {
+		return nil, fmt.Errorf("run cycle: unknown cutover verdict %q", verdict)
+	}
+	res := r.db.WithContext(ctx).
+		Model(&RunCycle{}).
+		Where("id = ? AND (cutover_verdict IS NULL OR cutover_verdict = '')", id).
+		Updates(map[string]any{"cutover_verdict": verdict})
 	if res.Error != nil {
 		return nil, res.Error
 	}

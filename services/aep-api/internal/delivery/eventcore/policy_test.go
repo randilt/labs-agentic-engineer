@@ -84,19 +84,20 @@ func TestDecideAutoMerge(t *testing.T) {
 		name     string
 		resolves []int
 		want     bool
+		wantHold bool
 		matched  []int
 	}{
-		{"one agent-work issue is enough", []int{12}, true, []int{12}},
-		{"several", []int{12, 13}, true, []int{12, 13}},
-		{"a claim outside the milestone decides nothing", []int{99}, false, nil},
-		{"a ledger issue is not agent work", []int{14}, false, nil},
-		{"partial match still merges", []int{99, 12}, true, []int{12}},
-		{"claiming nothing never merges", nil, false, nil},
+		{"one agent-work issue is enough", []int{12}, true, false, []int{12}},
+		{"several", []int{12, 13}, true, false, []int{12, 13}},
+		{"a claim outside the milestone decides nothing", []int{99}, false, false, nil},
+		{"a ledger issue is not agent work", []int{14}, false, false, nil},
+		{"partial match still merges", []int{99, 12}, true, false, []int{12}},
+		{"claiming nothing never merges", nil, false, false, nil},
 		// The validation cycle's pull request IS this run's work. Declining it —
 		// which is what reading `aep` alone did — strands the tests and the report
 		// unmerged, so the run can never read a verdict from them.
-		{"the validation issue is this run's work", []int{15}, true, []int{15}},
-		{"parity validation awaits human merge", []int{16}, false, []int{16}},
+		{"the validation issue is this run's work", []int{15}, true, false, []int{15}},
+		{"parity validation awaits human merge", []int{16}, false, true, []int{16}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -109,6 +110,9 @@ func TestDecideAutoMerge(t *testing.T) {
 			got := decideAutoMerge(c.resolves, issues)
 			if got.Merge != c.want {
 				t.Fatalf("Merge = %v (%s), want %v", got.Merge, got.Reason, c.want)
+			}
+			if got.Hold != c.wantHold {
+				t.Fatalf("Hold = %v, want %v", got.Hold, c.wantHold)
 			}
 			if !reflect.DeepEqual(got.Matched, c.matched) {
 				t.Fatalf("Matched = %v, want %v", got.Matched, c.matched)

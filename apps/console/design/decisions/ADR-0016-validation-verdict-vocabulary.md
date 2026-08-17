@@ -76,6 +76,16 @@ label also renders where they do not.
   a set of validation VALUES, so recolouring a state never silently changes what
   can be promoted.
 
+## Amendment — parity and cutover
+
+Two more lifecycle values ride `deploy.validation` after dual-endpoint
+validation (ADR-0021): `awaiting-parity-review` (human merge pending),
+`cutover-complete` (matched merge, edges rewritten), and
+`parity-mismatch-merged` (human merged a mismatch; cutover did not fire).
+They join `validationState` the way `running` does — the status read wins
+over the stored verdict. `cutover-complete` promotes; the other two block.
+`running` remains the only `info` tone.
+
 ## Rejected
 
 - **Amber for `partial`.** Its copy ends "please validate them manually", which

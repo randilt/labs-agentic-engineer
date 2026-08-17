@@ -80,6 +80,41 @@ import { useSession } from "../../../auth/SessionContext";
 type PreflightItem = components["schemas"]["PreflightItem"];
 type BuildInputItem = components["schemas"]["BuildInputItem"];
 
+function OnboardModeBanner({
+  sourceMode,
+  modernizes,
+  onModernize,
+}: {
+  sourceMode?: string;
+  modernizes?: string;
+  onModernize: () => void;
+}) {
+  if (sourceMode === "importAsIs") {
+    return (
+      <Alert
+        severity="info"
+        action={
+          <Button color="inherit" size="small" onClick={onModernize}>
+            Modernize
+          </Button>
+        }
+      >
+        Vendored unmodified. Flip this component to modernize to rebuild it
+        through the coding pipeline.
+      </Alert>
+    );
+  }
+  if (sourceMode === "modernize" && modernizes) {
+    return (
+      <Alert severity="info">
+        Rebuilds {modernizes} through the coding pipeline. Both endpoints stay
+        live until a human merges the parity pull request.
+      </Alert>
+    );
+  }
+  return null;
+}
+
 // Full-screen spec workspace (#80), per the oxygen-ui sample's
 // LoginEditorView pattern: fullWidth/noPadding page, own header bar,
 // sidebar collapsed while the view is open.
@@ -275,6 +310,11 @@ export function SpecView({ projectName }: { projectName: string }) {
   const selectedComponentName = selectedFile
     ? componentOf(selectedFile.path)
     : null;
+  const selectedOnboarding = useMemo(
+    () =>
+      dependencies.data?.find((c) => c.componentName === selectedComponentName),
+    [dependencies.data, selectedComponentName],
+  );
   const componentDependencies = useMemo(
     () =>
       dependencies.data?.find((c) => c.componentName === selectedComponentName)
@@ -954,12 +994,22 @@ export function SpecView({ projectName }: { projectName: string }) {
                     ) : isValidationCriteriaFile ? (
                       <ValidationView criteria={structuredLive} />
                     ) : (
-                      <DesignView
-                        design={structuredLive}
-                        dependencyStatus={dependencyStatus}
-                        dependencyUsedBy={dependencyUsedBy}
-                        onResolveDependency={handleResolveDependency}
-                      />
+                      <Stack spacing={2}>
+                        <OnboardModeBanner
+                          sourceMode={selectedOnboarding?.sourceMode}
+                          modernizes={selectedOnboarding?.modernizes}
+                          onModernize={() =>
+                            selectedComponentName &&
+                            seedChat(`/onboard ${selectedComponentName}`)
+                          }
+                        />
+                        <DesignView
+                          design={structuredLive}
+                          dependencyStatus={dependencyStatus}
+                          dependencyUsedBy={dependencyUsedBy}
+                          onResolveDependency={handleResolveDependency}
+                        />
+                      </Stack>
                     )
                   ) : content.data ? (
                     isOpenApiFile ? (
@@ -973,13 +1023,23 @@ export function SpecView({ projectName }: { projectName: string }) {
                         criteria={content.data.content}
                       />
                     ) : (
-                      <DesignView
-                        key={content.data.sha}
-                        design={content.data.content}
-                        dependencyStatus={dependencyStatus}
-                        dependencyUsedBy={dependencyUsedBy}
-                        onResolveDependency={handleResolveDependency}
-                      />
+                      <Stack spacing={2}>
+                        <OnboardModeBanner
+                          sourceMode={selectedOnboarding?.sourceMode}
+                          modernizes={selectedOnboarding?.modernizes}
+                          onModernize={() =>
+                            selectedComponentName &&
+                            seedChat(`/onboard ${selectedComponentName}`)
+                          }
+                        />
+                        <DesignView
+                          key={content.data.sha}
+                          design={content.data.content}
+                          dependencyStatus={dependencyStatus}
+                          dependencyUsedBy={dependencyUsedBy}
+                          onResolveDependency={handleResolveDependency}
+                        />
+                      </Stack>
                     )
                   ) : agentBusy ? (
                     // Mid-generation the committed fetch is suppressed (the

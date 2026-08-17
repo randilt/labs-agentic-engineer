@@ -63,6 +63,9 @@ type Ports struct {
 	Criteria ValidationOracle
 	Signaler RunSignaler
 	Starter  RunStarter
+	// Cutoverer fires after a human merges a parity-hold validation PR.
+	// Optional — unwired means the merge is recorded and nothing else happens.
+	Cutoverer Cutoverer
 	// PlatformSender is the platform's own GitHub login (the App bot,
 	// "<slug>[bot]"). Empty disables echo suppression — correct for a dev
 	// install with no App, where every write comes from a human PAT.
@@ -82,6 +85,10 @@ func New(p Ports) *Events { return &Events{p: p} }
 // runtime-config emitter it composes with is built AFTER the event plane at the
 // composition root, and a half-wired ensurer would silently skip the emit.
 func (e *Events) SetComponentEnsurer(c ComponentEnsurer) { e.p.Components = c }
+
+// SetCutoverer wires the parity-merge cutover after construction: onboard.Service
+// is assembled after the event plane at the composition root.
+func (e *Events) SetCutoverer(c Cutoverer) { e.p.Cutoverer = c }
 
 // Compile-time proof the event plane is the build-terminal observer the
 // watcher reports to (the root port that keeps them peer sub-packages).
@@ -241,6 +248,14 @@ func (e *Events) OnPullRequest(ctx context.Context, _, _ string, payload []byte)
 	if !decision.Merge {
 		slog.DebugContext(ctx, "eventcore: auto-merge declined", "pr", p.PullRequest.Number,
 			"milestone", owner.run.MilestoneNumber, "reason", decision.Reason)
+		if decision.Hold && owner.agentBranch {
+			// Wake the landing wait so the run can settle as awaiting-parity-review
+			// instead of sitting on the two-hour timer.
+			e.signal(ctx, owner.run, delivery.SigRunPRMerged, delivery.RunSignal{
+				PRNumber: p.PullRequest.Number,
+				Branch:   p.PullRequest.Head.Ref,
+			})
+		}
 		return nil
 	}
 	return e.merge(ctx, owner.orgID, owner.projectID, owner.run, p.PullRequest.Number, p.PullRequest.Head.Ref, decision)
@@ -261,21 +276,26 @@ func (e *Events) OnPullRequestClosed(ctx context.Context, _, _ string, payload [
 		return nil
 	}
 	owner, err := e.resolvePRRun(ctx, p.Repository.FullName, p.PullRequest.Head.Ref)
-	if err != nil || owner.run == nil {
+	if err != nil {
 		return err
 	}
 	mergeSHA := p.PullRequest.MergeCommitSHA
-	// Only the agent's own pull request closes the cycle. A human's merge moves
-	// main (so it still rebuilds), but it is not the cycle's outcome.
-	if owner.agentBranch {
-		e.closeCycle(ctx, owner.run, p.cyclePR(), mergeSHA)
+	if owner.run != nil {
+		// Only the agent's own pull request closes the cycle. A human's merge moves
+		// main (so it still rebuilds), but it is not the cycle's outcome.
+		if owner.agentBranch {
+			e.closeCycle(ctx, owner.run, p.cyclePR(), mergeSHA)
+		}
+		e.signal(ctx, owner.run, delivery.SigRunPRMerged, delivery.RunSignal{
+			PRNumber: p.PullRequest.Number,
+			Branch:   p.PullRequest.Head.Ref,
+			MergeSHA: mergeSHA,
+		})
+		if ferr := e.fanOutBuilds(ctx, owner.orgID, owner.projectID, owner.run, p.PullRequest.Number, mergeSHA); ferr != nil {
+			return ferr
+		}
 	}
-	e.signal(ctx, owner.run, delivery.SigRunPRMerged, delivery.RunSignal{
-		PRNumber: p.PullRequest.Number,
-		Branch:   p.PullRequest.Head.Ref,
-		MergeSHA: mergeSHA,
-	})
-	return e.fanOutBuilds(ctx, owner.orgID, owner.projectID, owner.run, p.PullRequest.Number, mergeSHA)
+	return e.considerCutover(ctx, owner, p)
 }
 
 // prOwner is a pull request's run, plus whether the pull request is the run's
@@ -413,4 +433,57 @@ func (e *Events) signal(ctx context.Context, run *delivery.MilestoneRun, name st
 	if err := e.p.Signaler.SignalRun(ctx, run, name, payload); err != nil {
 		slog.WarnContext(ctx, "eventcore: signal run failed", "run", run.ID, "signal", name, "error", err)
 	}
+}
+
+// considerCutover fires after a merged pull request whose cycle was held as a
+// parity validation. The run has typically already settled, so this does not
+// require a live run — it looks up the newest run of the branch's milestone
+// and checks that cycle's recorded MergeVerdict. An ordinary validation merge
+// never records parity-hold, so it never reaches the cutoverer.
+func (e *Events) considerCutover(ctx context.Context, owner prOwner, p pullRequestPayload) error {
+	if e.p.Cutoverer == nil || owner.orgID == "" {
+		return nil
+	}
+	number, ok := milestoneFromBranch(p.PullRequest.Head.Ref)
+	if !ok {
+		return nil
+	}
+	run := owner.run
+	if run == nil && e.p.Runs != nil {
+		var err error
+		run, err = e.p.Runs.LatestRunForMilestone(ctx, owner.orgID, owner.projectID, number)
+		if err != nil {
+			return err
+		}
+	}
+	if run == nil || e.p.Cycles == nil {
+		return nil
+	}
+	cycle, err := e.p.Cycles.Latest(ctx, run.OrgID, run.ID)
+	if err != nil || cycle == nil {
+		return err
+	}
+	if cycle.MergeVerdict != delivery.CycleMergeParityHold {
+		return nil
+	}
+	if cycle.PRNumber != 0 && cycle.PRNumber != p.PullRequest.Number {
+		return nil
+	}
+	mergeSHA := p.PullRequest.MergeCommitSHA
+	if cycle.MergeSHA == "" && mergeSHA != "" {
+		if ferr := e.p.Cycles.FinishCycle(ctx, cycle.ID, mergeSHA); ferr != nil {
+			slog.WarnContext(ctx, "eventcore: finish parity cycle failed", "cycle", cycle.ID, "error", ferr)
+		}
+	}
+	issue := cycle.ValidationIssue
+	if issue == 0 && len(cycle.Resolves) > 0 {
+		issue = cycle.Resolves[0]
+	}
+	return e.p.Cutoverer.OnParityMerged(ctx, CutoverRequest{
+		OrgID:       owner.orgID,
+		ProjectID:   owner.projectID,
+		MergeSHA:    mergeSHA,
+		CycleID:     cycle.ID,
+		IssueNumber: issue,
+	})
 }

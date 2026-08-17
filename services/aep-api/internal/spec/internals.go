@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -77,8 +78,15 @@ func validatePath(p string) error {
 // artifact outside specs/, surfaced by the console's Validation page. The write
 // path (Apply) is never widened — validatePath stays specs/-only.
 var readAllowList = map[string]bool{
-	"tests/validation/report.json": true,
+	"tests/validation/report.json":      true,
+	"tests/validation/parity-diff.json": true,
 }
+
+// allowListedRevPattern is the extra pin the allow-listed report paths accept:
+// a branch or tag name, so a parity-hold cycle can read the report on the PR
+// branch before anything lands on main. Deliberately narrower than git's
+// revision grammar — no `..`, `~`, `^`, `:` — so this is not a history browser.
+var allowListedRevPattern = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._/-]*$`)
 
 // validateReadPath gates the read side: an exact readAllowList entry passes,
 // otherwise it defers to the specs/-only validatePath. Exact-match is
@@ -91,16 +99,24 @@ func validateReadPath(p string) error {
 }
 
 // validateCommit gates the commit a read may be pinned to. Empty means the branch
-// tip. Anything else must be a hex object name — reusing commitSHAPattern, the
-// same shape a caller-provided save commit must take (artifact_service.go), so the
-// package has one answer to "what does a caller-supplied commit look like".
-//
-// Deliberately NOT an arbitrary revision expression: a read that accepted branch
-// names, tags or `HEAD~3` would turn an allow-listed path into a browser over the
-// repo's whole history. An object name can only be supplied by something that
-// already knows it — in practice the platform's own cycle records.
+// tip. A hex object name always passes. Allow-listed report paths also accept a
+// safe branch/tag name so a parity-hold cycle can pin to the PR branch; specs/
+// paths stay hex-only so the Files API cannot become a revision-expression
+// browser over the repo's history.
 func validateCommit(at string) error {
 	if at == "" || commitSHAPattern.MatchString(at) {
+		return nil
+	}
+	return fmt.Errorf("%w: commit must be a hex object name", ErrPathInvalid)
+}
+
+// validateReadAt is validateCommit plus the allow-listed-path exception.
+func validateReadAt(path, at string) error {
+	if err := validateCommit(at); err == nil {
+		return nil
+	}
+	if readAllowList[path] && allowListedRevPattern.MatchString(at) &&
+		!strings.Contains(at, "..") {
 		return nil
 	}
 	return fmt.Errorf("%w: commit must be a hex object name", ErrPathInvalid)

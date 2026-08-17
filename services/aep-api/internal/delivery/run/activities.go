@@ -241,12 +241,13 @@ type CycleFactsInput struct {
 // CycleFacts is what the EVENT PLANE learned about the cycle from webhooks —
 // the supervisor's ground truth for "did this cycle land?".
 type CycleFacts struct {
-	CycleID  string `json:"cycleId"`
-	Attempts int    `json:"attempts"`
-	Branch   string `json:"branch,omitempty"`
-	PRNumber int    `json:"prNumber,omitempty"`
-	MergeSHA string `json:"mergeSha,omitempty"`
-	Ended    bool   `json:"ended"`
+	CycleID      string `json:"cycleId"`
+	Attempts     int    `json:"attempts"`
+	Branch       string `json:"branch,omitempty"`
+	PRNumber     int    `json:"prNumber,omitempty"`
+	MergeSHA     string `json:"mergeSha,omitempty"`
+	MergeVerdict string `json:"mergeVerdict,omitempty"`
+	Ended        bool   `json:"ended"`
 }
 
 // ReadCycleFacts reads the cycle record back.
@@ -264,12 +265,13 @@ func (a *Activities) ReadCycleFacts(ctx context.Context, in CycleFactsInput) (Cy
 		return CycleFacts{}, err
 	}
 	return CycleFacts{
-		CycleID:  row.ID,
-		Attempts: row.Attempts,
-		Branch:   row.Branch,
-		PRNumber: row.PRNumber,
-		MergeSHA: row.MergeSHA,
-		Ended:    row.EndedAt != nil,
+		CycleID:      row.ID,
+		Attempts:     row.Attempts,
+		Branch:       row.Branch,
+		PRNumber:     row.PRNumber,
+		MergeSHA:     row.MergeSHA,
+		MergeVerdict: row.MergeVerdict,
+		Ended:        row.EndedAt != nil,
 	}, nil
 }
 

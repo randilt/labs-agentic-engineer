@@ -30,6 +30,13 @@ describe("toSpecEntry", () => {
     expect(
       toSpecEntry({ path: "specs/validation/plan.md", sha: "c3" }),
     ).toEqual({ path: "specs/validation/plan.md", sha: "c3", group: "validation" });
+    expect(
+      toSpecEntry({ path: "specs/onboarding/analysis.json", sha: "d5" }),
+    ).toEqual({
+      path: "specs/onboarding/analysis.json",
+      sha: "d5",
+      group: "onboarding",
+    });
   });
 
   it("keeps nested paths intact", () => {

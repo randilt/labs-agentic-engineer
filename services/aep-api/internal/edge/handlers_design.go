@@ -65,6 +65,8 @@ func (s *apiServer) ListDesignDependencies(ctx context.Context, request gen.List
 		out = append(out, gen.ComponentDependencies{
 			ComponentName: c.Name,
 			Dependencies:  deps,
+			SourceMode:    gen.ComponentDependenciesSourceMode(c.SourceMode),
+			Modernizes:    c.Modernizes,
 		})
 	}
 	return gen.ListDesignDependencies200JSONResponse(out), nil

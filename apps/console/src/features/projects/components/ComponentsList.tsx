@@ -20,6 +20,7 @@ import { useState } from "react";
 import {
   Avatar,
   Box,
+  Button,
   Card,
   CardContent,
   Stack,
@@ -28,22 +29,43 @@ import {
 } from "@wso2/oxygen-ui";
 import { Boxes } from "@wso2/oxygen-ui-icons-react";
 import { EmptyState } from "../../../components/EmptyState";
+import { StatusChip } from "../../../components/StatusChip";
 import type { components } from "../../../generated/aep-api";
+import { useSession } from "../../../auth/SessionContext";
+import { chatKeyFor, setPendingSeed } from "../../agent-chat/chatStore";
+import { useDesignDependencies } from "../../spec/api/queries";
 import { ComponentOpenApiDialog } from "./ComponentOpenApiDialog";
 
 type Component = components["schemas"]["Component"];
+type ComponentDependencies = components["schemas"]["ComponentDependencies"];
 
-// The component type is OpenChoreo's own ComponentType name, end-to-end.
 const isWebApp = (c: Component) => c.type === "web-application";
+
+function modeChip(dep: ComponentDependencies | undefined) {
+  switch (dep?.sourceMode) {
+    case "importAsIs":
+      return <StatusChip label="imported" tone="neutral" appearance="soft" />;
+    case "modernize":
+      return <StatusChip label="modernizing" tone="info" appearance="soft" />;
+    default:
+      return null;
+  }
+}
+
+function modeCaption(dep: ComponentDependencies | undefined): string | null {
+  if (dep?.sourceMode === "modernize" && dep.modernizes) {
+    return `Rebuilds ${dep.modernizes}`;
+  }
+  if (dep?.sourceMode === "importAsIs") {
+    return "Vendored unmodified";
+  }
+  return null;
+}
 
 // Component cards: one compact single-row card per component — avatar, name and
 // description. Services open their OpenAPI contract on click (JWT-guarded, so
-// via the authenticated dialog, not a raw link).
-//
-// Deliberately state-free. A component's build state used to be rolled up from
-// its tasks, but an issue no longer names a component — issue bodies are prose
-// the platform writes and never reads back — so the roll-up had no input left.
-// What is running lives on the deployments board, which reads the cluster.
+// via the authenticated dialog, not a raw link). Onboarded components also show
+// sourceMode and, for importAsIs, a Modernize CTA that seeds `/onboard <name>`.
 export function ComponentsList({
   projectName,
   items,
@@ -53,6 +75,11 @@ export function ComponentsList({
 }) {
   const [contractComponent, setContractComponent] = useState<string | null>(
     null,
+  );
+  const { orgHandle } = useSession();
+  const dependencies = useDesignDependencies(projectName);
+  const byName = new Map(
+    (dependencies.data ?? []).map((c) => [c.componentName, c]),
   );
 
   if (items.length === 0) {
@@ -72,6 +99,9 @@ export function ComponentsList({
         {items.map((c) => {
           const initial = ((c.displayName ?? c.name).trim()[0] ?? "C").toUpperCase();
           const openable = !isWebApp(c);
+          const dep = byName.get(c.name);
+          const caption = modeCaption(dep) ?? c.description ?? "—";
+          const modernize = dep?.sourceMode === "importAsIs";
           const card = (
             <Card
               key={c.name}
@@ -101,18 +131,36 @@ export function ComponentsList({
                     {initial}
                   </Avatar>
                   <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontWeight: 600 }} noWrap>
-                      {c.displayName ?? c.name}
-                    </Typography>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                      <Typography sx={{ fontWeight: 600 }} noWrap>
+                        {c.displayName ?? c.name}
+                      </Typography>
+                      {modeChip(dep)}
+                    </Stack>
                     <Typography
                       variant="caption"
                       color="text.secondary"
                       noWrap
                       sx={{ display: "block" }}
                     >
-                      {c.description ?? "—"}
+                      {caption}
                     </Typography>
                   </Box>
+                  {modernize && (
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingSeed(
+                          chatKeyFor(orgHandle ?? "default", projectName),
+                          `/onboard ${c.name}`,
+                        );
+                      }}
+                    >
+                      Modernize
+                    </Button>
+                  )}
                 </Stack>
               </CardContent>
             </Card>

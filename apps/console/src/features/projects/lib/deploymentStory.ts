@@ -117,6 +117,12 @@ function validationNote(validation: string, view: ReturnType<typeof validationVi
       // to the banner — whose sentence the Validation page's tile shares and cannot
       // drop. Deploy, not merge: validation runs against the deployed system.
       return "Waits for the implementation fix to deploy.";
+    case "awaiting-parity-review":
+      return "Parity validation is complete; merge the pull request to cut over.";
+    case "cutover-complete":
+      return "Parity matched. Traffic now hits the modernized component; the legacy sibling was torn down.";
+    case "parity-mismatch-merged":
+      return "The parity pull request merged with mismatched reports. Cutover did not fire.";
     default:
       break;
   }

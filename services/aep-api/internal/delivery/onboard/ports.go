@@ -48,6 +48,21 @@ type DesignReader interface {
 	ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]spec.DesignComponent, error)
 }
 
+// EdgeRewriter rewrites sibling dependency names in design.json at HEAD.
+type EdgeRewriter interface {
+	RewriteCutoverEdges(ctx context.Context, orgID, projectID, from, to string) (int, error)
+}
+
+// ReportReader reads a committed report at a pin (merge SHA).
+type ReportReader interface {
+	ReadAt(ctx context.Context, orgID, projectID, path, at string) (string, error)
+}
+
+// CycleRecorder stamps the cutover verdict on a (possibly closed) cycle.
+type CycleRecorder interface {
+	SetCutoverVerdict(ctx context.Context, cycleID, verdict string) error
+}
+
 // RepoLocator resolves org+project to its GitHub repo full name and default branch.
 type RepoLocator interface {
 	RepoFullName(ctx context.Context, orgID, projectID string) (string, error)

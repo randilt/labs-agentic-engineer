@@ -33,6 +33,9 @@ type Service struct {
 	git     GitCommitter
 	creds   CredentialResolver
 	deleter ComponentDeleter
+	edges   EdgeRewriter
+	reports ReportReader
+	cycles  CycleRecorder
 }
 
 // Deps is the onboard service's collaborator set.
@@ -44,6 +47,9 @@ type Deps struct {
 	Git     GitCommitter
 	Creds   CredentialResolver
 	Deleter ComponentDeleter
+	Edges   EdgeRewriter
+	Reports ReportReader
+	Cycles  CycleRecorder
 }
 
 // NewService wires the onboard executor.
@@ -56,6 +62,9 @@ func NewService(d Deps) *Service {
 		git:     d.Git,
 		creds:   d.Creds,
 		deleter: d.Deleter,
+		edges:   d.Edges,
+		reports: d.Reports,
+		cycles:  d.Cycles,
 	}
 }
 

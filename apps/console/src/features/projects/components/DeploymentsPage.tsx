@@ -224,7 +224,10 @@ function VerdictBanner({
   // three states outside COUNTABLE (`inconclusive`, `unreported`, `skipped`) can be
   // read from here, since their run row is never fetched. The two lifecycle values
   // are the ones that fold a verdict away, so those take the run's.
-  const inFlight = validation === "running" || validation === "awaiting-fix";
+  const inFlight =
+    validation === "running" ||
+    validation === "awaiting-fix" ||
+    validation === "awaiting-parity-review";
   const sentence =
     verdictSentence(inFlight ? verdict : validation, counts, validation, repairing) ||
     // `skipped`, and any value from a newer server. The shared copy deliberately has

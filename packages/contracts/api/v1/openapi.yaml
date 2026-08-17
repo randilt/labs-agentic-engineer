@@ -3127,6 +3127,8 @@ components:
     ComponentDependencies:
       description: One component's dependencies with read-time computed status/reason
         (list-design-dependencies) — the console's single dependency-status read model.
+        sourceMode and modernizes are the onboarding pairing the console's component
+        cards and flip-to-modernize CTA read; absent on a platform-generated component.
       additionalProperties: false
       properties:
         componentName:
@@ -3136,6 +3138,15 @@ components:
             $ref: '#/components/schemas/Dependency'
           type: array
           nullable: true
+        sourceMode:
+          description: Onboarding source mode. Absent on a platform-generated component.
+          enum:
+          - importAsIs
+          - modernize
+          type: string
+        modernizes:
+          description: The importAsIs sibling this modernize component replaces.
+          type: string
       required:
       - componentName
       - dependencies
@@ -3582,13 +3593,18 @@ components:
             `unreported` at exactly the surface that needs them, and `completed`
             never said whether anything passed.
 
-            Three LIFECYCLE values: none (the run has not reached validation),
+            LIFECYCLE values: none (the run has not reached validation),
             running (a validation CYCLE is in flight — not merely a live run with
-            no verdict yet) and awaiting-fix (validation failed and the run is
+            no verdict yet), awaiting-fix (validation failed and the run is
             repairing it — the work in flight is a CODING cycle, which is why the
-            state names the implementation rather than validation). The rest are
-            the verdict verbatim. They are mutually exclusive in time, so nothing
-            is hidden behind another.
+            state names the implementation rather than validation), and
+            awaiting-parity-review (a dual-endpoint parity validation PR is this
+            run's work but waits for a human to merge; the run has settled),
+            cutover-complete (the human merged a matching parity PR; edges were
+            rewritten and the legacy component torn down), and
+            parity-mismatch-merged (the human merged a mismatched parity PR;
+            cutover did not fire). The rest are the verdict verbatim. They are
+            mutually exclusive in time, so nothing is hidden behind another.
 
             passed (every criterion was automated and passed), partial (some
             passed, none failed, some were never covered), failed (a criterion
@@ -3606,6 +3622,9 @@ components:
           - none
           - running
           - awaiting-fix
+          - awaiting-parity-review
+          - cutover-complete
+          - parity-mismatch-merged
           - passed
           - partial
           - failed
@@ -4723,13 +4742,16 @@ components:
             so: `declined` is the auto-merge policy saying the pull request is
             not this run's work, `refused` is the host declining an open pull
             request (a conflict — a conflict issue is minted and the next cycle
-            works it). Absent on a cycle whose merge was never decided against,
+            works it), `parity-hold` is the policy recognising a dual-endpoint
+            parity validation PR as this run's work but leaving the merge for a
+            human. Absent on a cycle whose merge was never decided against,
             which includes every cycle that merged: a merge is recorded by
             `mergeSha`, and each fresh decision overwrites this field, so a
             declined pull request that later merges does not keep the verdict.
           enum:
           - declined
           - refused
+          - parity-hold
           type: string
         prDraft:
           description: >-

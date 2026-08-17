@@ -266,13 +266,13 @@ func (s *service) Read(ctx context.Context, orgID, projectID, path string) (*Fil
 // value is threaded straight through rather than resolved here.
 //
 // Both gates apply: validateReadPath decides WHICH paths are readable at all, and
-// validateCommit bounds the pin to a full commit sha so the parameter cannot
-// become a revision-expression browser over the repo's history.
+// validateReadAt bounds the pin — hex object names everywhere, plus safe branch
+// names on allow-listed report paths for parity-hold reads.
 func (s *service) ReadAt(ctx context.Context, orgID, projectID, path, at string) (*FileContent, error) {
 	if err := validateReadPath(path); err != nil {
 		return nil, err
 	}
-	if err := validateCommit(at); err != nil {
+	if err := validateReadAt(path, at); err != nil {
 		return nil, err
 	}
 	ref, err := s.resolveRef(ctx, orgID, projectID)

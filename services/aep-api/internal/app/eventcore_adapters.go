@@ -111,6 +111,17 @@ func (a eventcoreRuns) BumpBudget(ctx context.Context, runID string, counter del
 	return err
 }
 
+func (a eventcoreRuns) LatestRunForMilestone(ctx context.Context, orgID, projectID string, milestoneNumber int) (*delivery.MilestoneRun, error) {
+	rows, err := a.runs.ListByMilestone(ctx, orgID, projectID, milestoneNumber)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return &rows[0], nil
+}
+
 // eventcoreCycles projects the cycle repository onto the event plane's
 // CycleStore. The repository's guarded mutators return the row they changed
 // (or nil when a closed cycle made them a no-op); the event plane only needs

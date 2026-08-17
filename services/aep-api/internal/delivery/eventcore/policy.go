@@ -35,6 +35,7 @@ import (
 // rests on.
 type mergeDecision struct {
 	Merge   bool
+	Hold    bool
 	Reason  string
 	Matched []int
 }
@@ -98,6 +99,7 @@ func decideAutoMerge(resolves []int, milestoneIssues []sourcecontrol.IssueInfo) 
 			if delivery.HasLabel(iss.Labels, delivery.LabelParityWork) {
 				return mergeDecision{
 					Merge:   false,
+					Hold:    true,
 					Reason:  "parity validation awaits human merge",
 					Matched: matched,
 				}

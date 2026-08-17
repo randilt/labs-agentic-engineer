@@ -1,0 +1,16 @@
+# Task generation against an onboarded legacy/modernize pair.
+# importAsIs components get no Task; the modernize sibling is planned normally
+# and names the legacy pair in References.
+
+name: onboard-orders-pair
+fixture: onboard-orders-pair
+
+rubric:
+  mustCover:
+    - item: The modernize component orders-api-next has an implementable task
+      weight: 2
+    - The modernize task's References (or equivalent) name the importAsIs sibling orders-api
+    - Tasks are right-sized (a coherent unit of work each, not one giant task or micro-fragments)
+  mustNot:
+    - A task whose component is orders-api (the importAsIs sibling is vendored, never planned)
+    - Inventing a Dockerfile or rewriting the vendored legacy tree

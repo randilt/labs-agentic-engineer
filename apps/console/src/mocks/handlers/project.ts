@@ -117,6 +117,19 @@ export const projectHandlers = [
   http.get("*/api/v1/projects/:projectName/design/dependencies", () =>
     respond((s) => projectDependencies(s)),
   ),
+  http.post("*/api/v1/projects/:projectName/onboarding", async ({ request }) => {
+    if (scenario() === "error") {
+      return HttpResponse.json(projectSectionError, { status: 500 });
+    }
+    const body = (await request.json()) as { sourceRepoRef?: string };
+    if (!body.sourceRepoRef) {
+      return HttpResponse.json(
+        { code: "bad_request", message: "sourceRepoRef is required" },
+        { status: 400 },
+      );
+    }
+    return HttpResponse.json({ executionId: "exec-onboard-1" }, { status: 202 });
+  }),
   // Re-collect an external connection's values (#395 follow-up). Values are
   // write-only on the real platform (secrets go to the secret manager and
   // never echo), so the mock just acknowledges.

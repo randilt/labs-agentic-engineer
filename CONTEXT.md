@@ -295,6 +295,25 @@ Always derived, never stored — a spec is "approved" exactly when it has a
 version and is not dirty.
 _Avoid_: draft flag, spec status (as a stored fact).
 
+**sourceMode**:
+Per-component origin in `design.json`. Absent = platform-generated. `importAsIs`
+vendors unmodified code from `source` `{repo, ref, subpath}`. `modernize`
+rebuilds through the coding pipeline against the `importAsIs` sibling named by
+`modernizes`. Authored by `/onboard`; never derived by wiring.
+_Avoid_: defaulting sourceMode to generated (absence is the generated state).
+
+**Parity hold**:
+A dual-endpoint validation PR labelled `aep:parity`. The policy recognises it as
+this run's work but leaves it for a human. The run settles `awaiting-parity-review`;
+cutover is a later webhook, not a run-loop wait.
+_Avoid_: inferring cutover from "this looks like a validation PR".
+
+**Cutover**:
+On a matching parity merge: rewrite dependency edges onto the modernize
+component and tear down the legacy sibling. A mismatched merge records
+`parity-mismatch-merged` and does not cut over.
+_Avoid_: auto-cutover on any validation merge.
+
 **Build progress**:
 A build run's own task tally (total/done/failed/active), frozen when the run
 ends. Describes *that run*; the Tasks page remains the live per-task truth.

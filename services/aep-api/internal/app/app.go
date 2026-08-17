@@ -1003,6 +1003,9 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 		Git:     onboardGitCommitter{git: gitOpsService, repos: repoRepo},
 		Creds:   onboardCredResolver{resolver: credResolver},
 		Deleter: onboardComponentDeleter{dep: deploymentService},
+		Edges:   onboardEdgeRewriter{rewrite: designService.RewriteCutoverEdgesAtHead},
+		Reports: onboardReportReader{files: filesSvc},
+		Cycles:  onboardCycleRecorder{cycles: runCycleRepo},
 	})
 	// Assemble the dependencies domain (P8): the provisioning slice (7 ops over
 	// provisioningSvc) + the resource-type-discovery slice (ListPlatformResourceTypes
@@ -1144,6 +1147,7 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	// exist before the first build — so it is a deploy-stage input instead, pulled
 	// by the deployment service while it composes the binding.
 	eventPlane.SetComponentEnsurer(eventcoreComponents{comp: componentService})
+	eventPlane.SetCutoverer(eventcoreCutoverer{svc: onboardSvc})
 	// The deployment service's two config inputs, wired here because both are
 	// built after it.
 	deploymentService.SetConfigSources(configService, runtimeConfigSvc)

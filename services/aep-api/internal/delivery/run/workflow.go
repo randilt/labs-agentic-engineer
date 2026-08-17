@@ -146,9 +146,11 @@ type loop struct {
 	workBefore int
 
 	// prNumber / mergeSHA are the current cycle's landing, read from the cycle
-	// record rather than from the signal that announced it.
-	prNumber int
-	mergeSHA string
+	// record rather than from the signal that announced it. On a parity hold,
+	// mergeSHA is the PR branch (the report lives there, not on main).
+	prNumber   int
+	mergeSHA   string
+	parityHold bool
 
 	// deployFailed / deployFailures carry the last deploy stage's verdict from
 	// the cycle into the issue the boundary mints for it. Held on the loop rather
@@ -857,10 +859,10 @@ func (l *loop) ensureValidationIssue(ctx workflow.Context) (int, error) {
 	return issue, err
 }
 
-// readVerdict reads the report the validation cycle just merged, pinned to that
-// cycle's own merge commit (l.mergeSHA, learned from the polled PR facts). Without
-// the pin the read would follow the branch tip and a later run's report could
-// answer for this one.
+// readVerdict reads the report the validation cycle just produced, pinned to
+// that cycle's merge commit — or, on a parity hold, to the PR branch the
+// report was committed on (nothing is on main yet). Without the pin the read
+// would follow the branch tip and a later run's report could answer for this one.
 func (l *loop) readVerdict(ctx workflow.Context) (ValidationOutcome, error) {
 	var out ValidationOutcome
 	err := workflow.ExecuteActivity(activityCtx(ctx), (*Activities).ReadValidationVerdict,

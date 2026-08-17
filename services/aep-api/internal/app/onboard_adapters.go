@@ -19,10 +19,13 @@ package app
 import (
 	"context"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/delivery/eventcore"
 	"github.com/wso2/aep/aep-api/internal/delivery/onboard"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/projects"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 type runOnboarder struct {
@@ -82,4 +85,53 @@ type onboardComponentDeleter struct {
 
 func (d onboardComponentDeleter) DeleteComponentCascade(ctx context.Context, orgID, projectID, componentName string) error {
 	return d.dep.DeleteComponentCascade(ctx, orgID, projectID, componentName)
+}
+
+type onboardEdgeRewriter struct {
+	rewrite func(ctx context.Context, orgID, projectID, from, to string) (int, error)
+}
+
+func (r onboardEdgeRewriter) RewriteCutoverEdges(ctx context.Context, orgID, projectID, from, to string) (int, error) {
+	if r.rewrite == nil {
+		return 0, nil
+	}
+	return r.rewrite(ctx, orgID, projectID, from, to)
+}
+
+type onboardReportReader struct {
+	files spec.FilesService
+}
+
+func (r onboardReportReader) ReadAt(ctx context.Context, orgID, projectID, path, at string) (string, error) {
+	fc, err := r.files.ReadAt(ctx, orgID, projectID, path, at)
+	if err != nil {
+		return "", err
+	}
+	if fc == nil {
+		return "", nil
+	}
+	return fc.Content, nil
+}
+
+type onboardCycleRecorder struct {
+	cycles delivery.RunCycleRepository
+}
+
+func (r onboardCycleRecorder) SetCutoverVerdict(ctx context.Context, cycleID, verdict string) error {
+	_, err := r.cycles.SetCutoverVerdict(ctx, cycleID, verdict)
+	return err
+}
+
+type eventcoreCutoverer struct {
+	svc *onboard.Service
+}
+
+func (c eventcoreCutoverer) OnParityMerged(ctx context.Context, req eventcore.CutoverRequest) error {
+	return c.svc.OnParityMerged(ctx, onboard.CutoverInput{
+		OrgID:       req.OrgID,
+		ProjectID:   req.ProjectID,
+		MergeSHA:    req.MergeSHA,
+		CycleID:     req.CycleID,
+		IssueNumber: req.IssueNumber,
+	})
 }

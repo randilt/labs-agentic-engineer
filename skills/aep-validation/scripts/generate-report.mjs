@@ -17,17 +17,17 @@
  * under the License.
  */
 
-// generate-report.mjs ‚Äî deterministic validation report generator.
+// generate-report.mjs ù deterministic validation report generator.
 //
 // Maps a Playwright JSON reporter run back onto the acceptance oracle
 // (specs/validation/validation-criteria.json) and emits the validation
 // report. This script is copied VERBATIM into the project repo at
 // tests/e2e/scripts/generate-report.mjs by the aep-validation skill and
-// run there ‚Äî the agent never authors the report by hand, so statuses
+// run there ù the agent never authors the report by hand, so statuses
 // cannot drift from what the test run actually produced.
 //
 // The oracle is READ-ONLY input: this script reads it but never writes it.
-// The validation phase must not touch specs/ ‚Äî coverage is expressed by the
+// The validation phase must not touch specs/ ù coverage is expressed by the
 // report's per-criterion pass/fail, not by a flag written back into the oracle.
 //
 // Inputs (paths relative to the project repo root, override via flags):
@@ -35,19 +35,22 @@
 //   --commit <sha>    commit under validation (default: "unknown")
 //   --criteria <p>    default specs/validation/validation-criteria.json (read-only)
 //   --results <p>     default tests/e2e/test-results/results.json
+//   --legacy-results <p>  optional second Playwright JSON run (parity validation)
 //   --heal-log <p>    default tests/e2e/heal-log.json (optional file)
 //   --out <dir>       default tests/validation
+//   --diff            write tests/validation/parity-diff.json (needs --legacy-results)
 //
 // Outputs:
 //   <out>/report.json          machine-readable report (schemaVersion 1)
 //   <out>/report.md            human report incl. manual checklist
+//   <out>/parity-diff.json     criterion-by-criterion legacy vs modernize (with --diff)
 //
 // Join key: every automated spec's title MUST start with "<AC-ID>: "
 // (e.g. "AC-001-a: shows a name text box"). Duplicate or unknown AC ids
-// are hard errors (exit 2) ‚Äî fix the spec titles, then re-run.
+// are hard errors (exit 2) ù fix the spec titles, then re-run.
 //
 // Each mapped spec file must also carry a "// spec:" header comment
-// linking it to its test-plan section (hard error when absent ‚Äî add the
+// linking it to its test-plan section (hard error when absent ù add the
 // header and regenerate; no test re-run needed). Raw page.locator()
 // usage is reported as a warning: semantic locators (getByRole/
 // getByLabel/...) survive UI change, raw CSS is what the healer ends
@@ -63,22 +66,26 @@ function parseArgs(argv) {
   const args = {
     criteria: "specs/validation/validation-criteria.json",
     results: "tests/e2e/test-results/results.json",
+    legacyResults: null,
     healLog: "tests/e2e/heal-log.json",
     out: "tests/validation",
     commit: "unknown",
     issue: null,
+    diff: false,
   };
   for (let i = 2; i < argv.length; i += 2) {
     const key = argv[i];
     const val = argv[i + 1];
-    if (val === undefined) fail(`missing value for ${key}`);
+    if (val === undefined && key !== "--diff") fail(`missing value for ${key}`);
     switch (key) {
       case "--issue": args.issue = Number(val); break;
       case "--commit": args.commit = val; break;
       case "--criteria": args.criteria = val; break;
       case "--results": args.results = val; break;
+      case "--legacy-results": args.legacyResults = val; break;
       case "--heal-log": args.healLog = val; break;
       case "--out": args.out = val; break;
+      case "--diff": args.diff = true; i -= 1; break;
       default: fail(`unknown flag: ${key}`);
     }
   }
@@ -153,6 +160,39 @@ function escapeCell(s) {
   return String(s).replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 
+function indexResultsByAc(results, criteriaById) {
+  const specs = [];
+  for (const suite of results.suites ?? []) collectSpecs(suite, specs);
+
+  const resultByAc = new Map();
+  const errors = [];
+  for (const spec of specs) {
+    const m = AC_TITLE_RE.exec(spec.title ?? "");
+    if (!m) continue;
+    const acId = m[1];
+    if (resultByAc.has(acId)) {
+      errors.push(`duplicate spec title prefix ${acId} (files: ${resultByAc.get(acId).file}, ${spec.file})`);
+      continue;
+    }
+    if (!criteriaById.has(acId)) {
+      errors.push(`spec title references unknown criterion ${acId} (${spec.file})`);
+      continue;
+    }
+    resultByAc.set(acId, { ...specOutcome(spec), file: spec.file ?? null });
+  }
+  if (errors.length > 0) {
+    for (const e of errors) console.error(`generate-report: ${e}`);
+    process.exit(2);
+  }
+  return resultByAc;
+}
+
+function e2eStatus(c, resultByAc) {
+  const r = resultByAc.get(c.id);
+  if (!r) return "not_run";
+  return r.status;
+}
+
 function main() {
   const args = parseArgs(process.argv);
 
@@ -174,35 +214,21 @@ function main() {
   if (criteriaById.size === 0) fail("criteria file has no criteria");
 
   // ---- index test results by AC id ---------------------------------------
-  const specs = [];
-  for (const suite of results.suites ?? []) collectSpecs(suite, specs);
+  const resultByAc = indexResultsByAc(results, criteriaById);
 
-  const resultByAc = new Map();
   const unmappedTests = [];
-  const errors = [];
-  for (const spec of specs) {
-    const m = AC_TITLE_RE.exec(spec.title ?? "");
-    if (!m) {
-      unmappedTests.push({ title: spec.title ?? "", file: spec.file ?? null });
-      continue;
+  {
+    const specs = [];
+    for (const suite of results.suites ?? []) collectSpecs(suite, specs);
+    for (const spec of specs) {
+      const m = AC_TITLE_RE.exec(spec.title ?? "");
+      if (!m) {
+        unmappedTests.push({ title: spec.title ?? "", file: spec.file ?? null });
+      }
     }
-    const acId = m[1];
-    if (resultByAc.has(acId)) {
-      errors.push(`duplicate spec title prefix ${acId} (files: ${resultByAc.get(acId).file}, ${spec.file})`);
-      continue;
-    }
-    if (!criteriaById.has(acId)) {
-      errors.push(`spec title references unknown criterion ${acId} (${spec.file})`);
-      continue;
-    }
-    resultByAc.set(acId, { ...specOutcome(spec), file: spec.file ?? null });
-  }
-  if (errors.length > 0) {
-    for (const e of errors) console.error(`generate-report: ${e}`);
-    process.exit(2);
   }
 
-  // Heal-log entries must join to criteria AND carry full provenance ‚Äî reject
+  // Heal-log entries must join to criteria AND carry full provenance ù reject
   // free-form shapes (an entry the report can't attribute, or a heal without
   // spec/classification/change/commit, is an invisible heal).
   const HEAL_FIELDS = ["criterionId", "spec", "classification", "change", "commit"];
@@ -210,13 +236,13 @@ function main() {
   for (const [i, h] of healEntries.entries()) {
     if (h === null || typeof h !== "object" || Array.isArray(h)) {
       fail(
-        `heal-log entry ${i} is not an object ‚Äî ` +
+        `heal-log entry ${i} is not an object ù ` +
           `each entry must be {criterionId, spec, classification, change, commit}`,
       );
     }
     if (!h.criterionId || !criteriaById.has(h.criterionId)) {
       fail(
-        `heal-log entry ${i} has ${h.criterionId ? `unknown criterionId "${h.criterionId}"` : "no criterionId"} ‚Äî ` +
+        `heal-log entry ${i} has ${h.criterionId ? `unknown criterionId "${h.criterionId}"` : "no criterionId"} ù ` +
           `each entry must be {criterionId, spec, classification, change, commit} with a criterionId from the criteria file`,
       );
     }
@@ -225,7 +251,7 @@ function main() {
     );
     if (missing.length > 0) {
       fail(
-        `heal-log entry ${i} (${h.criterionId}) is missing required field(s): ${missing.join(", ")} ‚Äî ` +
+        `heal-log entry ${i} (${h.criterionId}) is missing required field(s): ${missing.join(", ")} ù ` +
           `each entry must be {criterionId, spec, classification, change, commit}, all non-empty strings`,
       );
     }
@@ -235,8 +261,9 @@ function main() {
   }
 
   // ---- heal visibility ----------------------------------------------------
+  const errors = [];
   // A spec that EXISTED at the base ref and was modified this run is a heal
-  // by definition ‚Äî it MUST have a heal-log entry, or a silent change (e.g.
+  // by definition ù it MUST have a heal-log entry, or a silent change (e.g.
   // a weakened assertion) would ship inside a clean report. The git diff
   // filter (--diff-filter=M = modified, not added) is exactly the
   // "pre-existing spec was changed" signal; a brand-new spec is an addition
@@ -254,11 +281,11 @@ function main() {
         ).split("\n");
         break;
       } catch {
-        // ref missing ‚Äî try the next candidate
+        // ref missing ù try the next candidate
       }
     }
     if (modified === null) {
-      // not a git repo / no origin ref ‚Äî degrade visibly, never silently
+      // not a git repo / no origin ref ù degrade visibly, never silently
       healCheckSkipped = true;
     } else {
       for (const p of modified) {
@@ -266,7 +293,7 @@ function main() {
         if (!m) continue;
         if (!healByAc.has(m[1])) {
           errors.push(
-            `${p} (criterion ${m[1]}) is a pre-existing spec modified this run but has no heal-log entry ‚Äî ` +
+            `${p} (criterion ${m[1]}) is a pre-existing spec modified this run but has no heal-log entry ù ` +
               `record the heal in tests/e2e/heal-log.json {criterionId, spec, classification, change, commit} and regenerate`,
           );
         }
@@ -276,7 +303,7 @@ function main() {
 
   // ---- spec-file conventions (header hard-check, locator lint) -----------
   // Reporter file paths are relative to the run's rootDir (usually the
-  // testDir, e.g. tests/e2e/specs), NOT the repo root ‚Äî resolve against
+  // testDir, e.g. tests/e2e/specs), NOT the repo root ù resolve against
   // rootDir first, then the conventional layouts.
   const rootDir = results.config?.rootDir;
   function resolveSpecPath(file) {
@@ -299,7 +326,7 @@ function main() {
     if (!r.file) continue;
     const abs = resolveSpecPath(r.file);
     if (!abs) {
-      warnings.push(`${acId}: spec file not found on disk (${r.file}) ‚Äî header/locator checks skipped`);
+      warnings.push(`${acId}: spec file not found on disk (${r.file}) ù header/locator checks skipped`);
       continue;
     }
     r.repoPath = path.relative(process.cwd(), abs).split(path.sep).join("/");
@@ -312,7 +339,7 @@ function main() {
     }
     if (/\.locator\(/.test(src)) {
       warnings.push(
-        `${acId}: raw locator() usage in ${r.repoPath} ‚Äî prefer getByRole/getByLabel/getByPlaceholder`,
+        `${acId}: raw locator() usage in ${r.repoPath} ù prefer getByRole/getByLabel/getByPlaceholder`,
       );
     }
   }
@@ -383,6 +410,31 @@ function main() {
   const reportJsonPath = path.join(args.out, "report.json");
   writeFileSync(reportJsonPath, JSON.stringify(report, null, 2) + "\n");
 
+  if (args.diff) {
+    if (!args.legacyResults) {
+      fail("--diff requires --legacy-results (the second Playwright JSON run)");
+    }
+    const legacyResults = readJson(args.legacyResults, "legacy Playwright results");
+    const legacyByAc = indexResultsByAc(legacyResults, criteriaById);
+    const diffRows = [];
+    let matched = true;
+    for (const req of criteriaDoc.requirements ?? []) {
+      for (const c of req.criteria ?? []) {
+        if (c.method !== "e2e") continue;
+        const legacy = e2eStatus(c, legacyByAc);
+        const modernize = e2eStatus(c, resultByAc);
+        const same = legacy === modernize;
+        if (!same) matched = false;
+        diffRows.push({ id: c.id, legacy, modernize, match: same });
+      }
+    }
+    const diffPath = path.join(args.out, "parity-diff.json");
+    writeFileSync(
+      diffPath,
+      JSON.stringify({ schemaVersion: 1, matched, criteria: diffRows }, null, 2) + "\n",
+    );
+  }
+
   // ---- report.md -------------------------------------------------------------
   const md = [];
   md.push(`# Validation report`);
@@ -397,8 +449,8 @@ function main() {
   md.push(`| Method | Total | Pass | Fail | Not run |`);
   md.push(`|---|---|---|---|---|`);
   md.push(`| e2e | ${totals.e2e.total} | ${totals.e2e.pass} | ${totals.e2e.fail} | ${totals.e2e.notRun} |`);
-  md.push(`| manual (human checklist) | ${totals.manual} | ‚Äî | ‚Äî | ‚Äî |`);
-  md.push(`| scenario (not validated) | ${totals.scenario} | ‚Äî | ‚Äî | ‚Äî |`);
+  md.push(`| manual (human checklist) | ${totals.manual} | ù | ù | ù |`);
+  md.push(`| scenario (not validated) | ${totals.scenario} | ù | ù | ù |`);
   md.push("");
 
   const e2eRows = rows.filter((r) => r.method === "e2e");
@@ -409,11 +461,11 @@ function main() {
     md.push(`|---|---|---|---|---|`);
     for (const r of e2eRows) {
       const notes = [];
-      if (r.healed) notes.push(`healed √ó${r.healAttempts}`);
+      if (r.healed) notes.push(`healed ù${r.healAttempts}`);
       if (r.flaky) notes.push("flaky");
-      const statusIcon = r.status === "pass" ? "‚úÖ pass" : r.status === "fail" ? "‚ùå fail" : "‚è≠Ô∏è not_run";
+      const statusIcon = r.status === "pass" ? "? pass" : r.status === "fail" ? "? fail" : "?? not_run";
       md.push(
-        `| ${r.id} | ${escapeCell(r.must)} | ${statusIcon} | ${r.spec ? `\`${r.spec}\`` : "‚Äî"} | ${notes.join(", ") || "‚Äî"} |`,
+        `| ${r.id} | ${escapeCell(r.must)} | ${statusIcon} | ${r.spec ? `\`${r.spec}\`` : "ù"} | ${notes.join(", ") || "ù"} |`,
       );
     }
     md.push("");
@@ -424,7 +476,7 @@ function main() {
     md.push(`## Failures`);
     md.push("");
     for (const r of failures) {
-      md.push(`### ${r.id} ‚Äî ${r.must}`);
+      md.push(`### ${r.id} ù ${r.must}`);
       md.push("");
       if (r.spec) md.push(`Spec: \`${r.spec}\``);
       if (r.failure?.location) md.push(`Location: \`${r.failure.location}\``);
@@ -441,7 +493,7 @@ function main() {
     md.push(`## Manual checklist`);
     md.push("");
     for (const r of manualRows) {
-      md.push(`- [ ] **${r.id}** ‚Äî ${r.must}`);
+      md.push(`- [ ] **${r.id}** ù ${r.must}`);
     }
     md.push("");
   }
@@ -453,7 +505,7 @@ function main() {
     md.push(`These criteria need agentic/exploratory judgment and are out of scope for this automated run:`);
     md.push("");
     for (const r of scenarioRows) {
-      md.push(`- **${r.id}** ‚Äî ${r.must}`);
+      md.push(`- **${r.id}** ù ${r.must}`);
     }
     md.push("");
   }
@@ -465,7 +517,7 @@ function main() {
     md.push(`|---|---|---|---|`);
     for (const h of healEntries) {
       md.push(
-        `| ${h.criterionId ?? "‚Äî"} | ${escapeCell(h.classification ?? "‚Äî")} | ${escapeCell(h.change ?? "‚Äî")} | ${h.commit ? `\`${String(h.commit).slice(0, 8)}\`` : "‚Äî"} |`,
+        `| ${h.criterionId ?? "ù"} | ${escapeCell(h.classification ?? "ù")} | ${escapeCell(h.change ?? "ù")} | ${h.commit ? `\`${String(h.commit).slice(0, 8)}\`` : "ù"} |`,
       );
     }
     md.push("");

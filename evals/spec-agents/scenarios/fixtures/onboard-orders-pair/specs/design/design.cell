@@ -1,0 +1,7 @@
+title Orders API Pair
+
+component orders-api as "Orders API (legacy)" service
+component orders-api-next as "Orders API (modernize)" service
+
+north -> orders-api
+north -> orders-api-next

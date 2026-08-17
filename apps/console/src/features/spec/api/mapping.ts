@@ -27,7 +27,7 @@ type FileMeta = components["schemas"]["FileMeta"];
 // room-key scheme of #113 decision 2 is retired — it double-prefixed
 // agent-created files).
 
-export type SpecGroup = "requirements" | "designs" | "validation";
+export type SpecGroup = "requirements" | "designs" | "validation" | "onboarding";
 
 export interface SpecFileEntry {
   /** Full repo-relative path (e.g. specs/requirements/prd.md) — also the
@@ -44,6 +44,7 @@ const GROUP_BY_FOLDER: Record<string, SpecGroup> = {
   requirements: "requirements",
   design: "designs",
   validation: "validation",
+  onboarding: "onboarding",
 };
 
 export function toSpecEntry(meta: FileMeta): SpecFileEntry | null {

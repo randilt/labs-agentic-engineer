@@ -522,6 +522,56 @@ func TestDeployStage_ValidationDerivation(t *testing.T) {
 	}
 }
 
+func TestValidationStage_ParityHold(t *testing.T) {
+	t.Parallel()
+	run := specRun("v1", delivery.RunStateSucceeded)
+	run.ID = "run-1"
+	run.ValidationVerdict = delivery.ValidationVerdictPassed
+	cycle := &delivery.RunCycle{
+		Kind:         delivery.CycleKindValidation,
+		MergeVerdict: delivery.CycleMergeParityHold,
+	}
+	svc := statusFixture{runs: []delivery.MilestoneRun{run}, cycle: cycle}.service()
+	got, err := svc.validationStage(context.Background(), "acme", &run)
+	if err != nil {
+		t.Fatalf("validationStage: %v", err)
+	}
+	if got != validationAwaitingParityReview {
+		t.Fatalf("validation = %q, want %q", got, validationAwaitingParityReview)
+	}
+}
+
+func TestValidationStage_CutoverVerdictWins(t *testing.T) {
+	t.Parallel()
+	run := specRun("v1", delivery.RunStateSucceeded)
+	run.ID = "run-1"
+	run.ValidationVerdict = delivery.ValidationVerdictPassed
+	for _, tc := range []struct {
+		verdict string
+		want    string
+	}{
+		{delivery.CycleCutoverComplete, validationCutoverComplete},
+		{delivery.CycleCutoverMismatch, validationParityMismatchMerged},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			cycle := &delivery.RunCycle{
+				Kind:           delivery.CycleKindValidation,
+				MergeVerdict:   delivery.CycleMergeParityHold,
+				MergeSHA:       "abc123",
+				CutoverVerdict: tc.verdict,
+			}
+			svc := statusFixture{runs: []delivery.MilestoneRun{run}, cycle: cycle}.service()
+			got, err := svc.validationStage(context.Background(), "acme", &run)
+			if err != nil {
+				t.Fatalf("validationStage: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("validation = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestRepoNotReady_ZeroValueStages pins the short-circuit: the nested stages
 // are contract-required, so a pending repo returns them present but
 // zero-valued — idle build, no deploy, empty spec.

@@ -38,7 +38,7 @@ import {
   ReceiptText,
 } from "@wso2/oxygen-ui-icons-react";
 import { useNavigate } from "@tanstack/react-router";
-import { useCreateProject, useGithubOrg } from "../api/queries";
+import { useCreateProject, useGithubOrg, useStartOnboarding } from "../api/queries";
 import { isValidProjectName, suggestProjectName } from "../lib/projectName";
 
 // Issue #71 decision: clicking an example acts as prompt + Start in one
@@ -63,6 +63,19 @@ const EXAMPLE_PROMPTS = [
       "An invoicing tool for freelancers that creates invoices, tracks payments, and exports PDFs",
   },
 ] as const;
+
+// owner/name or owner/name@ref — same shape POST /onboarding accepts.
+const SOURCE_REPO_REF = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(@[^\s]+)?$/;
+
+function isValidSourceRepoRef(ref: string): boolean {
+  return SOURCE_REPO_REF.test(ref.trim());
+}
+
+function projectNameFromSourceRef(ref: string): string {
+  const ownerName = ref.trim().split("@")[0] ?? ref;
+  const repo = ownerName.split("/")[1] ?? ownerName;
+  return suggestProjectName(repo.replace(/-/g, " "));
+}
 
 function ExampleCard({
   icon,
@@ -90,7 +103,9 @@ function ExampleCard({
 export function ProjectCreate() {
   const navigate = useNavigate();
   const [step, setStep] = useState<"prompt" | "confirm">("prompt");
+  const [entry, setEntry] = useState<"idea" | "onboard">("idea");
   const [prompt, setPrompt] = useState("");
+  const [sourceRepoRef, setSourceRepoRef] = useState("");
   const [name, setName] = useState("");
   // The repo name follows the project name until the user edits it (#71
   // feedback: repo name is changeable, the org is fixed).
@@ -98,14 +113,31 @@ export function ProjectCreate() {
   const [repoTouched, setRepoTouched] = useState(false);
   const { data: githubOrg } = useGithubOrg();
   const createProject = useCreateProject();
+  const startOnboarding = useStartOnboarding();
 
-  const start = (chosenPrompt: string) => {
+  const startIdea = (chosenPrompt: string) => {
     const suggested = suggestProjectName(chosenPrompt);
+    setEntry("idea");
     setPrompt(chosenPrompt);
+    setSourceRepoRef("");
     setName(suggested);
     setRepoName(suggested);
     setRepoTouched(false);
     createProject.reset();
+    startOnboarding.reset();
+    setStep("confirm");
+  };
+
+  const startOnboard = () => {
+    const ref = sourceRepoRef.trim();
+    const suggested = projectNameFromSourceRef(ref);
+    setEntry("onboard");
+    setPrompt(`Onboard existing repository ${ref}`);
+    setName(suggested);
+    setRepoName(suggested);
+    setRepoTouched(false);
+    createProject.reset();
+    startOnboarding.reset();
     setStep("confirm");
   };
 
@@ -126,6 +158,20 @@ export function ProjectCreate() {
       { name, prompt, ...(repoName !== name && { repoName }) },
       {
         onSuccess: (project) => {
+          if (entry === "onboard") {
+            startOnboarding.mutate(
+              { projectName: project.name, sourceRepoRef: sourceRepoRef.trim() },
+              {
+                onSuccess: () => {
+                  void navigate({
+                    to: "/projects/$projectName/spec",
+                    params: { projectName: project.name },
+                  });
+                },
+              },
+            );
+            return;
+          }
           // No client-side copy of the prompt: the BE persists it into the
           // project's own descriptor (specs/.agentic-engineer.toml) on create,
           // and `/start` reads it back from there — so the idea survives a
@@ -167,7 +213,7 @@ export function ProjectCreate() {
                 <Button
                   variant="contained"
                   disabled={!prompt.trim()}
-                  onClick={() => start(prompt.trim())}
+                  onClick={() => startIdea(prompt.trim())}
                 >
                   Start
                 </Button>
@@ -176,10 +222,40 @@ export function ProjectCreate() {
             <Grid container spacing={2}>
               {EXAMPLE_PROMPTS.map((example) => (
                 <Grid key={example.title} size={{ xs: 12, sm: 4 }}>
-                  <ExampleCard {...example} onPick={start} />
+                  <ExampleCard {...example} onPick={startIdea} />
                 </Grid>
               ))}
             </Grid>
+            <Stack spacing={2} sx={{ pt: 2, borderTop: 1, borderColor: "divider" }}>
+              <Typography variant="subtitle1">
+                Or onboard an existing repository
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Reverse-engineer a foreign repo into the spec pipeline, vendor
+                it unmodified, and optionally modernize components later.
+              </Typography>
+              <TextField
+                value={sourceRepoRef}
+                onChange={(e) => setSourceRepoRef(e.target.value)}
+                placeholder="owner/repo or owner/repo@ref"
+                error={Boolean(sourceRepoRef) && !isValidSourceRepoRef(sourceRepoRef)}
+                helperText={
+                  sourceRepoRef && !isValidSourceRepoRef(sourceRepoRef)
+                    ? "Use owner/name or owner/name@ref"
+                    : "GitHub owner/name, optionally pinned to a ref"
+                }
+                fullWidth
+              />
+              <Box sx={{ textAlign: "right" }}>
+                <Button
+                  variant="outlined"
+                  disabled={!isValidSourceRepoRef(sourceRepoRef)}
+                  onClick={startOnboard}
+                >
+                  Onboard
+                </Button>
+              </Box>
+            </Stack>
           </Stack>
         ) : (
           <Stack spacing={3}>
@@ -238,21 +314,34 @@ export function ProjectCreate() {
                   : "Failed to create project"}
               </Alert>
             )}
+            {startOnboarding.isError && (
+              <Alert severity="error">
+                {startOnboarding.error instanceof Error
+                  ? startOnboarding.error.message
+                  : "Failed to start onboarding analysis"}
+              </Alert>
+            )}
             <Stack direction="row" spacing={2} sx={{ justifyContent: "flex-end" }}>
               <Button
                 startIcon={<ArrowLeft size={18} />}
                 onClick={() => setStep("prompt")}
-                disabled={createProject.isPending}
+                disabled={createProject.isPending || startOnboarding.isPending}
               >
                 Back
               </Button>
               <Button
                 variant="contained"
                 onClick={accept}
-                disabled={!name || Boolean(nameError) || createProject.isPending}
-                loading={createProject.isPending}
+                disabled={
+                  !name ||
+                  Boolean(nameError) ||
+                  Boolean(repoError) ||
+                  createProject.isPending ||
+                  startOnboarding.isPending
+                }
+                loading={createProject.isPending || startOnboarding.isPending}
               >
-                Create project
+                {entry === "onboard" ? "Create and analyze" : "Create project"}
               </Button>
             </Stack>
           </Stack>

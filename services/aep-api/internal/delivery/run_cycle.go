@@ -45,6 +45,18 @@ const (
 	// which in this model means exactly one thing — it does not merge cleanly.
 	// A conflict issue is minted and the next cycle rebases.
 	CycleMergeRefused = "refused"
+	// CycleMergeParityHold is a dual-endpoint parity validation PR: the policy
+	// recognises it as this run's work but leaves it for a human. The run still
+	// settles; cutover waits on that merge.
+	CycleMergeParityHold = "parity-hold"
+
+	// Cutover verdicts — what a parity-PR merge decided. Empty on every cycle
+	// that is not a parity validation, and until the human merges.
+	// CycleCutoverComplete: reports matched; edges rewritten and legacy torn down.
+	CycleCutoverComplete = "complete"
+	// CycleCutoverMismatch: the human merged a parity PR whose reports did not
+	// match. Cutover did not fire; overriding is a separate console action.
+	CycleCutoverMismatch = "mismatch"
 )
 
 // IssueNumbers is a jsonb-serialized list of GitHub issue numbers. Named so the
@@ -130,14 +142,21 @@ type RunCycle struct {
 	ValidationIssue int `gorm:"not null;default:0" json:"validationIssue,omitempty"`
 
 	// MergeVerdict is why the pull request did NOT merge, when something decided
-	// so: CycleMergeDeclined (the policy: not this run's work) or
-	// CycleMergeRefused (the host: it does not merge cleanly). Empty on a cycle
-	// whose merge was never decided against — including every cycle that merged,
-	// since a merge is recorded by MergeSHA and each fresh decision overwrites
-	// this field.
+	// so: CycleMergeDeclined (the policy: not this run's work),
+	// CycleMergeRefused (the host: it does not merge cleanly), or
+	// CycleMergeParityHold (the policy recognised this run's work but left the
+	// merge for a human). Empty on a cycle whose merge was never decided against
+	// — including every cycle that merged, since a merge is recorded by MergeSHA
+	// and each fresh decision overwrites this field.
 	MergeVerdict string `gorm:"type:text" json:"mergeVerdict,omitempty"`
 	// MergeReason is the verdict's own words, for a reader. Never parsed.
 	MergeReason string `gorm:"type:text" json:"mergeReason,omitempty"`
+
+	// CutoverVerdict is what the parity-merge webhook decided after a human
+	// merged a parity-hold pull request: CycleCutoverComplete or
+	// CycleCutoverMismatch. Empty until that merge, and on every other cycle.
+	// Write-once, including on a closed cycle — the run has already settled.
+	CutoverVerdict string `gorm:"type:text" json:"cutoverVerdict,omitempty"`
 
 	// AgentReason is why the CYCLE'S AGENT stopped without landing a pull
 	// request, as the pod-truth watcher classified it: `timed_out`,

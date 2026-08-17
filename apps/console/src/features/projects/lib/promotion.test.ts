@@ -116,10 +116,10 @@ describe("canPromote", () => {
   });
 
   it("blocks on an unearned or failing verdict, not on the absence of one", () => {
-    for (const blocked of ["running", "awaiting-fix", "failed", "unreported"]) {
+    for (const blocked of ["running", "awaiting-fix", "awaiting-parity-review", "parity-mismatch-merged", "failed", "unreported"]) {
       expect(canPromote({ status: "deployed", validation: blocked })).toBe(false);
     }
-    for (const open of ["none", "skipped", "passed", "partial", "inconclusive"]) {
+    for (const open of ["none", "skipped", "passed", "partial", "inconclusive", "cutover-complete"]) {
       expect(canPromote({ status: "deployed", validation: open })).toBe(true);
     }
   });

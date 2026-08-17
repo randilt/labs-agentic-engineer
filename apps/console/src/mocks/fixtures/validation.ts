@@ -29,6 +29,9 @@ export const VALIDATION_SCENARIOS: ValidationScenario[] = [
   "none",
   "running",
   "awaiting-fix",
+  "awaiting-parity-review",
+  "cutover-complete",
+  "parity-mismatch-merged",
   "passed",
   "partial",
   "failed",
@@ -323,6 +326,10 @@ const ARTIFACTS: Record<ValidationScenario, Artifacts> = {
   // Mid-repair: the failed attempt's report is committed and stays readable, which
   // is what lets the page show WHAT is being fixed while the fix is in flight.
   "awaiting-fix": FAILED,
+  // Settled parity validation: verdict is real, PR waits for a human merge.
+  "awaiting-parity-review": PASSED,
+  "cutover-complete": PASSED,
+  "parity-mismatch-merged": FAILED,
 };
 
 /** The validation artifacts a scenario puts in the repo, as Files-API entries. */
@@ -511,6 +518,42 @@ const RUNS: Record<ValidationScenario, MilestoneRunView> = {
     endedAt: null,
     validation: { verdict: "failed", issue: 12, reportPath: REPORT_PATH },
     cycles: [CODING_1, validationCycle(2, "failed"), CODING_IN_FLIGHT],
+  }),
+  "awaiting-parity-review": run({
+    state: "succeeded",
+    validation: { verdict: "passed", issue: 12, reportPath: REPORT_PATH },
+    cycles: [
+      CODING_1,
+      validationCycle(2, "passed", {
+        mergeSha: "",
+        mergeVerdict: "parity-hold",
+        mergeReason: "parity validation awaits human merge",
+      }),
+    ],
+  }),
+  "cutover-complete": run({
+    state: "succeeded",
+    validation: { verdict: "passed", issue: 12, reportPath: REPORT_PATH },
+    cycles: [
+      CODING_1,
+      validationCycle(2, "passed", {
+        mergeSha: "abc123def456",
+        mergeVerdict: "parity-hold",
+        mergeReason: "parity validation awaits human merge",
+      }),
+    ],
+  }),
+  "parity-mismatch-merged": run({
+    state: "succeeded",
+    validation: { verdict: "passed", issue: 12, reportPath: REPORT_PATH },
+    cycles: [
+      CODING_1,
+      validationCycle(2, "passed", {
+        mergeSha: "abc123def456",
+        mergeVerdict: "parity-hold",
+        mergeReason: "parity validation awaits human merge",
+      }),
+    ],
   }),
   // The run is live and has not reached validation at all — the state every run
   // spends most of its life in.

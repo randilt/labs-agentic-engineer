@@ -119,9 +119,10 @@ export function tasksChecks(projectDir: string, run: TaskPlanRunResult): Structu
   const issues = run.issues;
   const components = listComponents(projectDir);
   const known = new Set(components);
+  const planned = components.filter((c) => !isImportAsIs(projectDir, c));
 
   const coveredComponents = new Set(issues.map((i) => i.component));
-  const uncovered = components.filter((c) => !coveredComponents.has(c));
+  const uncovered = planned.filter((c) => !coveredComponents.has(c));
 
   const badRefs: string[] = [];
   for (const i of issues) {
@@ -132,11 +133,24 @@ export function tasksChecks(projectDir: string, run: TaskPlanRunResult): Structu
 
   return report([
     check("plan produced issues", (run.fold?.created.length ?? 0) + (run.fold?.updated.length ?? 0) > 0, run.error ?? "fold wrote nothing (no terminal manifest?)"),
-    check("every component covered", components.length > 0 && uncovered.length === 0, uncovered.length ? `uncovered: ${uncovered.join(", ")}` : "no components"),
+    check("every component covered", uncovered.length === 0, uncovered.length ? `uncovered: ${uncovered.join(", ")}` : "no components"),
     check("dependsOn refs resolve", badRefs.length === 0, badRefs.join("; ")),
     check("dependsOn acyclic", isAcyclic(issues), "cycle in the component dependency graph"),
     check("turn completed", !run.error, run.error),
   ]);
+}
+
+function isImportAsIs(projectDir: string, name: string): boolean {
+  try {
+    const raw = readFileSync(
+      join(projectDir, `specs/design/components/${name}/design.json`),
+      "utf8",
+    );
+    const doc = JSON.parse(raw) as { sourceMode?: string };
+    return doc.sourceMode === "importAsIs";
+  } catch {
+    return false;
+  }
 }
 
 /** Cycle check over the component-level build-order graph the issues express. */
