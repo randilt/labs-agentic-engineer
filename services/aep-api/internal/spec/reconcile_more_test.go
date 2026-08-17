@@ -278,7 +278,7 @@ func TestLoadEmbeddedLibrary(t *testing.T) {
 	wantKinds := map[string]string{
 		"api-management": "org", "ballerina": "org", "go": "org", "react-webapp": "org",
 		"thunder-authentication": "org",
-		"cell-design": "platform", "design": "platform",
+		"cell-design": "platform", "design": "platform", "onboard": "platform",
 		"wireframes": "platform", "grilling": "platform",
 		"architecture": "platform", "openapi-conventions": "platform", "start": "platform",
 		"task-planning": "platform", "validation-criteria": "platform",
@@ -298,6 +298,9 @@ func TestLoadEmbeddedLibrary(t *testing.T) {
 	// References ride along where the source tree has them.
 	if got := by["openapi-conventions"].References["references/wso2-rest-api-design-guidelines.md"]; got == "" {
 		t.Fatalf("openapi-conventions reference missing")
+	}
+	if got := by["onboard"].References["references/analysis.md"]; got == "" {
+		t.Fatalf("onboard reference missing")
 	}
 }
 

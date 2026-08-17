@@ -179,6 +179,14 @@ test("the design flow inlines its whole lineup, in lineup order", () => {
   ]);
 });
 
+test("the onboard flow inlines the same lineup as design", () => {
+  const design = eagerSkillsFor({ kind: "flow", skill: "design" });
+  assert.deepEqual(eagerSkillsFor({ kind: "flow", skill: "onboard" }), [
+    "onboard",
+    ...design.slice(1),
+  ]);
+});
+
 /**
  * A name that resolves to nothing is skipped SILENTLY by `buildEagerSkillsBlock`
  * (org catalogs vary, so an absent skill must not fail a turn). That makes a typo
@@ -194,6 +202,7 @@ test("every eager skill name exists in the platform skill library", () => {
     { kind: "plan" } as const,
     { kind: "flow", skill: "amend" } as const,
     { kind: "flow", skill: "design" } as const,
+    { kind: "flow", skill: "onboard" } as const,
   ];
   for (const turn of turns) {
     for (const name of eagerSkillsFor(turn)) {
@@ -210,6 +219,7 @@ test("`organization` is never eager — it rides the system prompt on every turn
     { kind: "start" } as const,
     { kind: "flow", skill: "amend" } as const,
     { kind: "flow", skill: "design" } as const,
+    { kind: "flow", skill: "onboard" } as const,
   ]) {
     assert.ok(!eagerSkillsFor(turn).includes("organization"), `${JSON.stringify(turn)} must not inline it twice`);
   }

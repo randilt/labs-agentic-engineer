@@ -26,7 +26,7 @@ cluster, `pnpm play` for the playground), so **a skill edit needs no rebuild**.
 An absent kind means `org`, which is a real decision, not a default to lean on:
 
 - **`platform`** — AE-owned, read-only in the console. The design-flow skills
-  (`start`, `amend`, `grilling`, `prd-contract`, `design`, `cell-design`,
+  (`start`, `amend`, `grilling`, `prd-contract`, `design`, `onboard`, `cell-design`,
   `architecture`, `security-design`, `openapi-conventions`, `wireframes`,
   `validation-criteria`, `task-planning`) and the coding run's own workflow skills (`aep`,
   `aep-validation`, `playwright-cli`).

@@ -636,7 +636,7 @@ func TestRealLibrary_RunnerSkillsAreCodingAudienceAndMirrored(t *testing.T) {
 	}
 	// And the design-flow skills stay out, which is what replaced the runner's
 	// explicit base-plugin selection.
-	for _, name := range []string{"design", "task-planning", "high-level-architecture"} {
+	for _, name := range []string{"design", "onboard", "task-planning", "high-level-architecture"} {
 		if _, ok := mirror[claudeSkillsDir+"/"+name+"/SKILL.md"]; ok {
 			t.Errorf("%s reached a build's mirror — a coding session must not see it", name)
 		}

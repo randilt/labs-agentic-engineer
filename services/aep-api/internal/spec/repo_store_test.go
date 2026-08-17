@@ -302,7 +302,7 @@ func TestFreshOrgProvisioning_SeedsEmbeddedLibrary(t *testing.T) {
 		t.Fatalf("fresh org must list built-ins, got %v", summaries)
 	}
 	// Platform skills are seeded and list READ-ONLY on the skills page.
-	for _, platformName := range []string{"architecture", "wireframes", "openapi-conventions", "task-planning"} {
+	for _, platformName := range []string{"architecture", "wireframes", "openapi-conventions", "task-planning", "onboard"} {
 		sum, ok := byName[platformName]
 		if !ok {
 			t.Fatalf("platform skill %q missing from the user-facing list", platformName)
