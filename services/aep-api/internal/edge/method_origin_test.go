@@ -68,6 +68,7 @@ const (
 // embedded FIELD NAME expected to supply it. P0: every op is still legacy.
 var opOwner = map[string]string{
 	"ApplyFiles":                    embedSpec,
+	"StartOnboardingAnalysis":       embedSpec,
 	"BuildProject":                  embedDelivery,
 	"CancelRun":                     embedDelivery,
 	"RevalidateBuild":               embedDelivery,

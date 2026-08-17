@@ -78,8 +78,8 @@ function readDispatchFromEnv(): DispatchRequest {
   const mcpToken = process.env.AEP_MCP_TOKEN || "";
 
   const taskKind = process.env.AEP_TASK_KIND || "implementation";
-  if (taskKind !== "implementation" && taskKind !== "validation") {
-    throw new Error(`AEP_TASK_KIND must be "implementation" or "validation": ${taskKind}`);
+  if (taskKind !== "implementation" && taskKind !== "validation" && taskKind !== "analysis") {
+    throw new Error(`AEP_TASK_KIND must be "implementation", "validation", or "analysis": ${taskKind}`);
   }
 
   const publisherClientId = process.env.PUBLISHER_CLIENT_ID ?? "";
@@ -245,6 +245,9 @@ async function main(): Promise<number> {
       console.error(`[oneshot] validation context unavailable — not starting the agent: ${msg}`);
       return 2;
     }
+  } else if (req.taskKind === "analysis") {
+    console.log("[oneshot] analysis run — foreign source clone; codebase-analysis skill drives extraction");
+    availableSkillNames = await listMirroredSkills(layout.workspace);
   } else {
     const pinned = await resolveTaskSkills({
       workspace: layout.workspace,

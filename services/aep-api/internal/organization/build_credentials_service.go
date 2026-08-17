@@ -209,6 +209,53 @@ func (s *BuildCredentialsService) provisionGitSecret(ctx context.Context, ocOrgI
 	return nil
 }
 
+// StageSourceSecret provisions the org's git credential for cloning a FOREIGN
+// source repo during onboarding analysis. Unlike StageBuildSecret it does NOT
+// require the repo to be registered in git_repositories — reachability is
+// determined at clone time using the org's credential. Public repos may clone
+// with an empty SecretRef when provisioning is unavailable.
+func (s *BuildCredentialsService) StageSourceSecret(
+	ctx context.Context, ocOrgID, sourceOwnerName, workflowRunName string,
+) (*StageResult, error) {
+	if ocOrgID == "" || sourceOwnerName == "" || workflowRunName == "" {
+		return nil, fmt.Errorf("stage-source-secret: ocOrgId, sourceOwnerName, workflowRunName are required")
+	}
+
+	cred, err := s.resolver.Resolve(ctx, ocOrgID)
+	if err != nil {
+		var notActive *secrets.OrgNotActiveError
+		var notFound *secrets.OrgNotFoundError
+		if errors.As(err, &notActive) || errors.As(err, &notFound) {
+			return nil, fmt.Errorf("%w: %v", ErrOrgDisconnected, err)
+		}
+		return nil, fmt.Errorf("stage-source-secret: resolve credential: %w", err)
+	}
+
+	token, _, err := cred.Token(ctx)
+	if err != nil {
+		return nil, classifyMintErr(err)
+	}
+
+	if s.gitSecrets == nil {
+		slog.WarnContext(ctx, "stage-source-secret: git-secret client not configured — provisioning skipped",
+			"ocOrgId", ocOrgID, "source", sourceOwnerName, "workflowRunName", workflowRunName)
+		return &StageResult{SecretRef: ""}, nil
+	}
+
+	if err := s.provisionGitSecret(ctx, ocOrgID, usernameForCredential(cred), token); err != nil {
+		slog.WarnContext(ctx, "stage-source-secret: git secret provisioning failed — dispatching without a git secret",
+			"ocOrgId", ocOrgID, "source", sourceOwnerName,
+			"workflowRunName", workflowRunName, "error", err)
+		return &StageResult{SecretRef: ""}, nil
+	}
+
+	slog.InfoContext(ctx, "stage-source-secret: git secret provisioned for foreign source clone",
+		"ocOrgId", ocOrgID, "source", sourceOwnerName,
+		"workflowRunName", workflowRunName, "secretRef", BuildGitSecretName)
+
+	return &StageResult{SecretRef: BuildGitSecretName}, nil
+}
+
 // DeleteBuildSecretsForOrg removes the org's build GitSecret. Called from the
 // org.disconnected cascade so a staged token doesn't linger after the
 // credential row is wiped. Idempotent — a not-found delete is a no-op.

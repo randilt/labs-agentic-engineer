@@ -313,9 +313,15 @@ func githubBotLogin(appSlug string) string {
 func cycleOrgLookup(db *gorm.DB) func(ctx context.Context, cycleID string) (string, error) {
 	return func(ctx context.Context, cycleID string) (string, error) {
 		var row delivery.RunCycle
-		if err := db.WithContext(ctx).Select("org_id").First(&row, "id = ?", cycleID).Error; err != nil {
+		if err := db.WithContext(ctx).Select("org_id").First(&row, "id = ?", cycleID).Error; err == nil {
+			return row.OrgID, nil
+		}
+		// Analysis executions carry the execution id as AEP_TASK_ID with no run
+		// cycle row — resolve org from the executions table for that callback path.
+		var exec delivery.Execution
+		if err := db.WithContext(ctx).Select("org_id").First(&exec, "id = ?", cycleID).Error; err != nil {
 			return "", err
 		}
-		return row.OrgID, nil
+		return exec.OrgID, nil
 	}
 }

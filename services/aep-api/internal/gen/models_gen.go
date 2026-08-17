@@ -1061,6 +1061,17 @@ type MilestoneRunViewOrigin string
 // MilestoneRunViewState planning is the fill window — the version's milestone is still being written (gates minted, then issues planned in). waiting is the unbounded wait between cycles, where something outside the platform is needed. blocked is terminal and is NOT a failure — the org has no agent concurrency slot left, so the cycle was never launched (see terminalReason agent-quota-blocked).
 type MilestoneRunViewState string
 
+// OnboardingAnalysisRequest defines model for OnboardingAnalysisRequest.
+type OnboardingAnalysisRequest struct {
+	// SourceRepoRef Foreign repository as owner/name or owner/name@ref
+	SourceRepoRef string `json:"sourceRepoRef"`
+}
+
+// OnboardingAnalysisResponse defines model for OnboardingAnalysisResponse.
+type OnboardingAnalysisResponse struct {
+	ExecutionID string `json:"executionId"`
+}
+
 // OrganizationList defines model for OrganizationList.
 type OrganizationList struct {
 	Items []OrganizationView `json:"items"`
@@ -2030,6 +2041,9 @@ type ApplyFilesJSONRequestBody = ApplyRequest
 
 // CreateIssueJSONRequestBody defines body for CreateIssue for application/json ContentType.
 type CreateIssueJSONRequestBody = CreateIssueRequest
+
+// StartOnboardingAnalysisJSONRequestBody defines body for StartOnboardingAnalysis for application/json ContentType.
+type StartOnboardingAnalysisJSONRequestBody = OnboardingAnalysisRequest
 
 // PromoteTaskFromIssueJSONRequestBody defines body for PromoteTaskFromIssue for application/json ContentType.
 type PromoteTaskFromIssueJSONRequestBody = PromoteFromIssueRequest

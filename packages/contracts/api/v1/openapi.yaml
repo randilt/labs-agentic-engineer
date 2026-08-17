@@ -708,6 +708,41 @@ paths:
       summary: Compute the build dependency-drawer preflight
       tags:
       - Projects
+  /projects/{projectName}/onboarding:
+    post:
+      operationId: start-onboarding-analysis
+      summary: Start reverse-engineering a foreign source repo into onboarding facts
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardingAnalysisRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingAnalysisResponse'
+          description: Analysis execution admitted
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Error
+      security:
+      - userJWT: []
+      tags:
+      - Spec
   /projects/{projectName}/builds:
     get:
       description: The version ledger — one entry per built spec version tag, newest first, each
@@ -2865,6 +2900,23 @@ components:
       required:
       - needsInput
       - items
+      type: object
+    OnboardingAnalysisRequest:
+      additionalProperties: false
+      properties:
+        sourceRepoRef:
+          description: Foreign repository as owner/name or owner/name@ref
+          type: string
+      required:
+      - sourceRepoRef
+      type: object
+    OnboardingAnalysisResponse:
+      additionalProperties: false
+      properties:
+        executionId:
+          type: string
+      required:
+      - executionId
       type: object
     BuildRequest:
       additionalProperties: false

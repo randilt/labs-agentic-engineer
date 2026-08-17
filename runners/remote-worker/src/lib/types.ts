@@ -68,7 +68,7 @@ export interface DispatchRequest {
    * so the workflow is in context at startup — description-triggered
    * loading proved unreliable for a skill the whole run depends on.
    */
-  taskKind: "implementation" | "validation";
+  taskKind: "implementation" | "validation" | "analysis";
   /**
    * Developer diagnostics for this run: the SDK's own debug log, its stderr,
    * and per-token streaming frames for the watchdog. All three land in files

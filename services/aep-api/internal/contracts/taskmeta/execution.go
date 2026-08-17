@@ -47,6 +47,11 @@ const (
 	// resource-readiness watcher (dependency-management §3.6). A succeeded
 	// provision run derives StatusDeployed, satisfying dependent coding tasks.
 	KindProvision ExecutionKind = "provision"
+	// KindAnalysis: reverse-engineers a foreign source repo into onboarding
+	// facts. No PR/build; admitted by spec/onboarding, Finished when the runner
+	// posts facts to the internal callback (the pod succeeding alone is not
+	// terminal — only the callback commits analysis.json and closes the row).
+	KindAnalysis ExecutionKind = "analysis"
 )
 
 // ExecutionStatus is the lifecycle of a single Execution row (§7).

@@ -16,7 +16,10 @@
 
 package spec
 
-import "github.com/wso2/aep/aep-api/internal/sourcecontrol"
+import (
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	"github.com/wso2/aep/aep-api/internal/spec/onboarding"
+)
 
 // Deps is what this domain must be handed to exist: typed ports / services,
 // never concrete collaborators (§8). Constructor injection only.
@@ -43,4 +46,6 @@ type Deps struct {
 	SkillImport *SkillImportService
 	// CollabRepo is the project-ownership oracle behind the two collab ops.
 	CollabRepo sourcecontrol.RepoService
+	// Onboarding is the foreign-repo analysis front door (POST /onboarding).
+	Onboarding *onboarding.Service
 }

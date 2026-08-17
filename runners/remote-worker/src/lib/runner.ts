@@ -291,7 +291,13 @@ export interface PerTaskSkills {
  * and paying for its body on every turn of every validation run is not.
  */
 export function alwaysOnSkills(taskKind: DispatchRequest["taskKind"]): string[] {
-  return taskKind === "validation" ? ["aep", "aep-validation"] : ["aep"];
+  if (taskKind === "validation") {
+    return ["aep", "aep-validation"];
+  }
+  if (taskKind === "analysis") {
+    return ["aep", "codebase-analysis"];
+  }
+  return ["aep"];
 }
 
 /**

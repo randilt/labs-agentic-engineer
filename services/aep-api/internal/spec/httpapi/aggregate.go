@@ -21,6 +21,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/spec/collab"
 	"github.com/wso2/aep/aep-api/internal/spec/files"
 	"github.com/wso2/aep/aep-api/internal/spec/genaiturns"
+	"github.com/wso2/aep/aep-api/internal/spec/onboarding"
 	"github.com/wso2/aep/aep-api/internal/spec/skills"
 	"github.com/wso2/aep/aep-api/internal/spec/tags"
 )
@@ -33,6 +34,7 @@ type (
 	tagsHandler       = tags.Handler
 	skillsHandler     = skills.Handler
 	collabHandler     = collab.Handler
+	onboardingHandler = onboarding.Handler
 )
 
 // Handlers is the spec domain's slice handlers, embedded so Go promotes each
@@ -43,6 +45,7 @@ type Handlers struct {
 	*tagsHandler
 	*skillsHandler
 	*collabHandler
+	*onboardingHandler
 }
 
 // New assembles the domain: pure wiring, constructor injection only.
@@ -57,5 +60,6 @@ func New(d spec.Deps) (*Handlers, error) {
 		tagsHandler:       tags.New(d.Artifacts),
 		skillsHandler:     skills.New(d.Skills, d.SkillMut, d.SkillImport),
 		collabHandler:     collab.New(d.CollabRepo),
+		onboardingHandler: onboarding.New(d.Onboarding),
 	}, nil
 }

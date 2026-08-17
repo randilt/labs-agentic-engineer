@@ -72,6 +72,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol/webhook"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
+	"github.com/wso2/aep/aep-api/internal/spec/onboarding"
 	"github.com/wso2/aep/aep-api/ocauth"
 )
 
@@ -834,6 +835,14 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	// spec — the Spec Authoring & Versioning domain (P4): genai turns, files,
 	// tag reads, the org skills library, and the collab oracle/descriptor. Its
 	// slice handlers embed straight into the edge's composite.
+	onboardingSvc := onboarding.NewService(onboarding.Deps{
+		Repos:      onboardingProjectRepo{repos: repoRepo},
+		RepoName:   repoNamer{repos: repoRepo, db: db},
+		Execs:      executionRepo,
+		Dispatcher: analysisDispatcher{exec: codingExecutor},
+		Files:      onboardingFiles{files: filesSvc},
+	})
+	params.InternalDeps.OnboardingFacts = onboardingSvc
 	specHandlers, err := spechttpapi.New(spec.Deps{
 		GenAI:         genaiSvc,
 		Files:         filesSvc,
@@ -843,6 +852,7 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 		SkillMut:      skillMutationSvc,
 		SkillImport:   skillImportSvc,
 		CollabRepo:    repoService,
+		Onboarding:    onboardingSvc,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("assemble spec domain: %w", err)
@@ -1213,6 +1223,8 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	// deletion is retention's. Always on (no longer gated on cluster-gateway-proxy).
 	watchers = append(watchers, codingagent.NewJobWatcher(runtimeClient, runCycleRepo, asServiceIdentity))
 	slog.Info("codingagent.JobWatcher: enabled (OpenChoreo resource tree)")
+	watchers = append(watchers, onboarding.NewAnalysisWatcher(runtimeClient, executionRepo, onboardingSvc, asServiceIdentity, 0))
+	slog.Info("onboarding.AnalysisWatcher: enabled (analysis execution pod truth)")
 	// The milestone run supervisor's Temporal worker. Registered only when
 	// Temporal is configured (TEMPORAL_HOSTPORT set). The watcher dials in a
 	// retry loop, so a Temporal server that is down at boot is not fatal — the

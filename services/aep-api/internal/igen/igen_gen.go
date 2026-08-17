@@ -54,6 +54,15 @@ type Identity struct {
 	Name  string `json:"Name"`
 }
 
+// OnboardingFacts Structured facts committed as specs/onboarding/analysis.json. Facts only — never a proposed component decomposition.
+type OnboardingFacts struct {
+	Gaps                 []string               `json:"gaps,omitempty"`
+	Languages            []string               `json:"languages,omitempty"`
+	Ref                  string                 `json:"ref"`
+	SourceRepo           string                 `json:"sourceRepo"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
 // RefreshResponse Fresh GitHub token + commit identity for the execution.
 type RefreshResponse struct {
 	ExpiresAt time.Time `json:"expiresAt"`
@@ -91,14 +100,129 @@ type publisherCCContextKey string
 // taskJWTContextKey is the context key for taskJWT security scheme
 type taskJWTContextKey string
 
+// RunnerOnboardingFactsJSONRequestBody defines body for RunnerOnboardingFacts for application/json ContentType.
+type RunnerOnboardingFactsJSONRequestBody = OnboardingFacts
+
 // RunnerValidationCredentialsJSONRequestBody defines body for RunnerValidationCredentials for application/json ContentType.
 type RunnerValidationCredentialsJSONRequestBody = TestCredentialRequest
+
+// Getter for additional properties for OnboardingFacts. Returns the specified
+// element and whether it was found
+func (a OnboardingFacts) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for OnboardingFacts
+func (a *OnboardingFacts) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for OnboardingFacts to handle AdditionalProperties
+func (a *OnboardingFacts) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["gaps"]; found {
+		err = json.Unmarshal(raw, &a.Gaps)
+		if err != nil {
+			return fmt.Errorf("error reading 'gaps': %w", err)
+		}
+		delete(object, "gaps")
+	}
+
+	if raw, found := object["languages"]; found {
+		err = json.Unmarshal(raw, &a.Languages)
+		if err != nil {
+			return fmt.Errorf("error reading 'languages': %w", err)
+		}
+		delete(object, "languages")
+	}
+
+	if raw, found := object["ref"]; found {
+		err = json.Unmarshal(raw, &a.Ref)
+		if err != nil {
+			return fmt.Errorf("error reading 'ref': %w", err)
+		}
+		delete(object, "ref")
+	}
+
+	if raw, found := object["sourceRepo"]; found {
+		err = json.Unmarshal(raw, &a.SourceRepo)
+		if err != nil {
+			return fmt.Errorf("error reading 'sourceRepo': %w", err)
+		}
+		delete(object, "sourceRepo")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for OnboardingFacts to handle AdditionalProperties
+func (a OnboardingFacts) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Gaps != nil {
+		object["gaps"], err = json.Marshal(a.Gaps)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'gaps': %w", err)
+		}
+	}
+
+	if a.Languages != nil {
+		object["languages"], err = json.Marshal(a.Languages)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'languages': %w", err)
+		}
+	}
+
+	object["ref"], err = json.Marshal(a.Ref)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'ref': %w", err)
+	}
+
+	object["sourceRepo"], err = json.Marshal(a.SourceRepo)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'sourceRepo': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Refresh an execution's git credentials (runner callback)
 	// (POST /executions/{executionId}/credentials/refresh)
 	RunnerRefreshCredentials(w http.ResponseWriter, r *http.Request, executionID string)
+	// Post structured onboarding analysis facts (runner callback)
+	// (POST /onboarding/{executionId}/facts)
+	RunnerOnboardingFacts(w http.ResponseWriter, r *http.Request, executionID string)
 	// Fetch a validation run's deployed endpoints (runner callback)
 	// (GET /validation/{cycleId}/context)
 	RunnerValidationContext(w http.ResponseWriter, r *http.Request, cycleID string)
@@ -141,6 +265,38 @@ func (siw *ServerInterfaceWrapper) RunnerRefreshCredentials(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RunnerRefreshCredentials(w, r, executionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunnerOnboardingFacts operation middleware
+func (siw *ServerInterfaceWrapper) RunnerOnboardingFacts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "executionId" -------------
+	var executionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "executionId", r.PathValue("executionId"), &executionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "executionId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, TaskJWTScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunnerOnboardingFacts(w, r, executionID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -339,6 +495,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/executions/{executionId}/credentials/refresh", wrapper.RunnerRefreshCredentials)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/onboarding/{executionId}/facts", wrapper.RunnerOnboardingFacts)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/validation/{cycleId}/context", wrapper.RunnerValidationContext)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/validation/{cycleId}/test-credentials", wrapper.RunnerValidationCredentials)
 
@@ -373,6 +530,40 @@ type RunnerRefreshCredentialsdefaultJSONResponse struct {
 }
 
 func (response RunnerRefreshCredentialsdefaultJSONResponse) VisitRunnerRefreshCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunnerOnboardingFactsRequestObject struct {
+	ExecutionID string `json:"executionId"`
+	Body        *RunnerOnboardingFactsJSONRequestBody
+}
+
+type RunnerOnboardingFactsResponseObject interface {
+	VisitRunnerOnboardingFactsResponse(w http.ResponseWriter) error
+}
+
+type RunnerOnboardingFacts204Response struct {
+}
+
+func (response RunnerOnboardingFacts204Response) VisitRunnerOnboardingFactsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RunnerOnboardingFactsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RunnerOnboardingFactsdefaultJSONResponse) VisitRunnerOnboardingFactsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -468,6 +659,9 @@ type StrictServerInterface interface {
 	// Refresh an execution's git credentials (runner callback)
 	// (POST /executions/{executionId}/credentials/refresh)
 	RunnerRefreshCredentials(ctx context.Context, request RunnerRefreshCredentialsRequestObject) (RunnerRefreshCredentialsResponseObject, error)
+	// Post structured onboarding analysis facts (runner callback)
+	// (POST /onboarding/{executionId}/facts)
+	RunnerOnboardingFacts(ctx context.Context, request RunnerOnboardingFactsRequestObject) (RunnerOnboardingFactsResponseObject, error)
 	// Fetch a validation run's deployed endpoints (runner callback)
 	// (GET /validation/{cycleId}/context)
 	RunnerValidationContext(ctx context.Context, request RunnerValidationContextRequestObject) (RunnerValidationContextResponseObject, error)
@@ -524,6 +718,39 @@ func (sh *strictHandler) RunnerRefreshCredentials(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RunnerRefreshCredentialsResponseObject); ok {
 		if err := validResponse.VisitRunnerRefreshCredentialsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RunnerOnboardingFacts operation middleware
+func (sh *strictHandler) RunnerOnboardingFacts(w http.ResponseWriter, r *http.Request, executionID string) {
+	var request RunnerOnboardingFactsRequestObject
+
+	request.ExecutionID = executionID
+
+	var body RunnerOnboardingFactsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RunnerOnboardingFacts(ctx, request.(RunnerOnboardingFactsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RunnerOnboardingFacts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RunnerOnboardingFactsResponseObject); ok {
+		if err := validResponse.VisitRunnerOnboardingFactsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

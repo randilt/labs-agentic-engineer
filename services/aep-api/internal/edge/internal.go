@@ -18,14 +18,17 @@ package edge
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/wso2/aep/aep-api/internal/delivery/validation"
 	"github.com/wso2/aep/aep-api/internal/igen"
 	"github.com/wso2/aep/aep-api/internal/organization"
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
+	"github.com/wso2/aep/aep-api/internal/spec/onboarding"
 )
 
 // The internal service-to-service surface (/internal/v1), served CONTRACT-FIRST
@@ -53,6 +56,9 @@ type InternalDeps struct {
 	// answers 503 for its op.
 	ValidationContext     validation.ContextProvider
 	ValidationCredentials validation.CredentialRequester
+	// OnboardingFacts commits specs/onboarding/analysis.json from the analysis
+	// runner callback (POST /internal/v1/onboarding/{executionId}/facts).
+	OnboardingFacts *onboarding.Service
 }
 
 // internalServer implements igen.StrictServerInterface.
@@ -105,6 +111,8 @@ func runnerAuthGate(authorizer *auth.RunnerAuthorizer) igen.StrictMiddlewareFunc
 				cycleID = req.CycleID
 			case igen.RunnerValidationCredentialsRequestObject:
 				cycleID = req.CycleID
+			case igen.RunnerOnboardingFactsRequestObject:
+				cycleID = req.ExecutionID
 			default:
 				return nil, errUnauthorized("unauthenticated internal operation: " + operationID)
 			}
@@ -226,4 +234,29 @@ func (s *internalServer) RunnerValidationCredentials(ctx context.Context, reques
 		return nil, errInternal("failed to request test credentials")
 	}
 	return igen.RunnerValidationCredentials200JSONResponse(toIgenTestCredential(*resp)), nil
+}
+
+func (s *internalServer) RunnerOnboardingFacts(ctx context.Context, request igen.RunnerOnboardingFactsRequestObject) (igen.RunnerOnboardingFactsResponseObject, error) {
+	if s.deps.OnboardingFacts == nil {
+		return nil, errServiceUnavailable("onboarding facts not configured")
+	}
+	org := tenant.BoundOrgFromContext(ctx)
+	if request.Body == nil {
+		return nil, apierr.BadRequest("facts body is required")
+	}
+	raw, err := json.Marshal(request.Body)
+	if err != nil {
+		return nil, apierr.BadRequest("facts body must be JSON")
+	}
+	if err := s.deps.OnboardingFacts.ReceiveFacts(ctx, org, request.ExecutionID, raw); err != nil {
+		switch {
+		case errors.Is(err, onboarding.ErrExecutionNotFound):
+			return nil, errNotFound("no analysis execution with this id")
+		case errors.Is(err, onboarding.ErrExecutionNotActive):
+			return nil, apierr.Conflict("analysis execution is not active")
+		default:
+			return nil, errInternal("failed to commit onboarding facts")
+		}
+	}
+	return igen.RunnerOnboardingFacts204Response{}, nil
 }
