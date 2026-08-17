@@ -26,10 +26,15 @@ import (
 )
 
 // Handler serves POST /projects/{projectName}/onboarding.
-type Handler struct{ svc *Service }
+type Handler struct{ svc AnalysisStarter }
+
+// AnalysisStarter is the slice's service port. *Service satisfies it.
+type AnalysisStarter interface {
+	StartAnalysis(ctx context.Context, orgID, projectID, sourceRepoRef string) (string, error)
+}
 
 // New returns the slice handler.
-func New(svc *Service) *Handler { return &Handler{svc: svc} }
+func New(svc AnalysisStarter) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) StartOnboardingAnalysis(ctx context.Context, request gen.StartOnboardingAnalysisRequestObject) (gen.StartOnboardingAnalysisResponseObject, error) {
 	if h.svc == nil {

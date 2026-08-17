@@ -45,6 +45,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery/eventcore"
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
+	"github.com/wso2/aep/aep-api/internal/delivery/onboard"
 	"github.com/wso2/aep/aep-api/internal/delivery/run"
 	"github.com/wso2/aep/aep-api/internal/delivery/runread"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
@@ -994,6 +995,15 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 		Access:    dependencies.NewAccessRequestRepository(db),
 		Providers: orgEndpointCatalog,
 	})
+	onboardSvc := onboard.NewService(onboard.Deps{
+		Issues:  issueService,
+		Execs:   executionRepo,
+		Design:  designComponents{store: artifactStore},
+		Repos:   onboardRepoLocator{repos: repoRepo},
+		Git:     onboardGitCommitter{git: gitOpsService, repos: repoRepo},
+		Creds:   onboardCredResolver{resolver: credResolver},
+		Deleter: onboardComponentDeleter{dep: deploymentService},
+	})
 	// Assemble the dependencies domain (P8): the provisioning slice (7 ops over
 	// provisioningSvc) + the resource-type-discovery slice (ListPlatformResourceTypes
 	// over the catalog). Both slices are nil-tolerant; the edge 503s when unwired.
@@ -1252,8 +1262,9 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 			// The planning phase. These are the same two collaborators the build
 			// click used to drive in a detached goroutine; behind an activity they
 			// are durable across a restart and retried on a blip.
-			Gates:   buildGateResolver{prov: provisioningSvc},
-			Planner: taskPlan,
+			Gates:     buildGateResolver{prov: provisioningSvc},
+			Onboarder: runOnboarder{svc: onboardSvc},
+			Planner:   taskPlan,
 		})
 		watchers = append(watchers, run.NewWorkerWatcher(temporalRuntime, runActs))
 		slog.Info("run: temporal worker watcher registered", "hostPort", cfg.Temporal.HostPort)

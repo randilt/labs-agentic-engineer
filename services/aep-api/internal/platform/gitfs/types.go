@@ -168,6 +168,10 @@ type CommitOpts struct {
 	Author    *GitIdentity
 	Committer *GitIdentity
 	Retry     RetryPolicy
+	// Branch is the ref to commit and push. Empty commits to the repo's default
+	// branch. When the named branch does not exist yet, Mutate bases the commit
+	// on the default-branch tip and creates the branch on push.
+	Branch string
 }
 
 // CommitResult reports what a Mutate did. Changed is false when fn staged

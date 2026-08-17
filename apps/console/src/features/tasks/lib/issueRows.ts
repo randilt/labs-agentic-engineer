@@ -52,8 +52,9 @@ export function partitionIssues(tasks: TaskView[]): IssuePartition {
   for (const task of tasks) {
     switch (task.executorClass) {
       case "provision":
+      case "onboard":
         partition.gates.push(task);
-        break;
+        break
       case "ledger":
         partition.ledger.push(task);
         break;

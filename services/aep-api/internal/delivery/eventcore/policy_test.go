@@ -161,6 +161,10 @@ func TestDispatchable(t *testing.T) {
 			hostCounts(task, gate), false,
 		},
 		{
+			"an onboard issue holds dispatch the same way a gate does",
+			hostCounts(task, []string{delivery.LabelOnboard}), false,
+		},
+		{
 			// …and the moment the gate closes, that same task is dispatchable. This
 			// is the pair that catches an arithmetic which always answers zero.
 			"the gate closes and the task is dispatchable",

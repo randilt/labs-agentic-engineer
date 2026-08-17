@@ -128,7 +128,7 @@ func dispatchable(counts *sourcecontrol.MilestoneIssueCounts) bool {
 	if counts == nil {
 		return false
 	}
-	return counts.OpenProvision == 0 && counts.OpenNonGateWork() > 0
+	return counts.OpenProvision == 0 && counts.OpenOnboard == 0 && counts.OpenNonGateWork() > 0
 }
 
 // attemptsFor counts how many of a component's WorkflowRuns belong to one

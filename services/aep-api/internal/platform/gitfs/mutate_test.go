@@ -244,3 +244,43 @@ func TestMutateRejectsHostilePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestMutateNamedBranchCreatesFromDefault(t *testing.T) {
+	fx := workspacetest.New(t, seedFiles())
+	ctx := context.Background()
+	mainSHA := fx.Origin.HeadSHA(t)
+
+	res, err := fx.Engine.Mutate(ctx, fx.Ref, func(tx gitfs.Tx) error {
+		tx.Write("vendored/app.go", []byte("package app\n"))
+		return nil
+	}, gitfs.CommitOpts{Message: "onboard: vendor", Branch: "aep/onboard/svc", Retry: fastRetry})
+	if err != nil {
+		t.Fatalf("Mutate named branch: %v", err)
+	}
+	if !res.Changed || res.CommitSHA == "" {
+		t.Fatalf("Mutate result = %+v, want Changed with a sha", res)
+	}
+	if got := fx.Origin.HeadSHA(t); got != mainSHA {
+		t.Fatalf("default branch moved to %s, want still %s", got, mainSHA)
+	}
+	if got := fx.Origin.FileAt(t, "aep/onboard/svc", "vendored/app.go"); got != "package app\n" {
+		t.Fatalf("named-branch file = %q", got)
+	}
+	if got := fx.Origin.FileAt(t, "aep/onboard/svc", "README.md"); got != "hello\n" {
+		t.Fatalf("named branch did not inherit default-branch tree: README.md = %q", got)
+	}
+
+	res2, err := fx.Engine.Mutate(ctx, fx.Ref, func(tx gitfs.Tx) error {
+		tx.Write("vendored/app.go", []byte("package app\n\nfunc F() {}\n"))
+		return nil
+	}, gitfs.CommitOpts{Message: "onboard: update", Branch: "aep/onboard/svc", Retry: fastRetry})
+	if err != nil {
+		t.Fatalf("second Mutate on named branch: %v", err)
+	}
+	if !res2.Changed {
+		t.Fatal("second Mutate reported no change")
+	}
+	if got := fx.Origin.FileAt(t, "aep/onboard/svc", "vendored/app.go"); got != "package app\n\nfunc F() {}\n" {
+		t.Fatalf("updated named-branch file = %q", got)
+	}
+}

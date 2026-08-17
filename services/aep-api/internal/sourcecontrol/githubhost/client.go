@@ -476,6 +476,22 @@ func (c *Client) ListPullRequestFiles(ctx context.Context, owner, repo string, c
 	return files, nil
 }
 
+// CreatePullRequest opens a pull request (POST /pulls/{owner}/{repo}/pulls).
+func (c *Client) CreatePullRequest(ctx context.Context, owner, repo string, cred secrets.Credential, req sourcecontrol.CreatePullRequestRequest) (*sourcecontrol.PullRequestResult, error) {
+	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/pulls", owner, repo)
+	var created struct {
+		Number  int    `json:"number"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, url, "pull request create", cred, req, &created, http.StatusCreated); err != nil {
+		return nil, err
+	}
+	if created.HTMLURL == "" {
+		return nil, fmt.Errorf("github response missing html_url for pull request")
+	}
+	return &sourcecontrol.PullRequestResult{Number: created.Number, URL: created.HTMLURL}, nil
+}
+
 func (c *Client) CommentIssue(ctx context.Context, owner, repo string, cred secrets.Credential, number int, body string) error {
 	payload := map[string]string{"body": body}
 	reqBody, err := json.Marshal(payload)

@@ -217,6 +217,12 @@ type Gates interface {
 	ProvisionForBuild(ctx context.Context, orgID, projectID, tag string, milestoneNumber int, inputs []delivery.ProvisionInput) error
 }
 
+// Onboarder mints aep:onboard issues and vendors import-as-is components before
+// task planning. Satisfied by an app-root adapter over delivery/onboard.
+type Onboarder interface {
+	OnboardForMilestone(ctx context.Context, orgID, projectID, tag string, milestoneNumber int) error
+}
+
 // Planner runs the version's planning turn, minting one prose issue per planned
 // Task into the milestone. Satisfied by `*task.PlanService` at the composition
 // root; declaring it here rather than importing keeps `task ⊥ run` intact, which

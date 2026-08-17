@@ -86,7 +86,10 @@ func (e *Engine) mutateOnce(ctx context.Context, ref RepoRef, p repoPaths, fn fu
 		}
 	}
 	branch := defaultBranch(ref)
-	baseSHA, err := e.resolveCommit(ctx, ref, p, "heads/"+branch)
+	if b := strings.TrimSpace(opts.Branch); b != "" {
+		branch = b
+	}
+	baseSHA, newBranch, err := e.branchBase(ctx, ref, p, branch)
 	if err != nil {
 		return CommitResult{}, err
 	}
@@ -115,7 +118,7 @@ func (e *Engine) mutateOnce(ctx context.Context, ref RepoRef, p repoPaths, fn fu
 	if err != nil {
 		return CommitResult{}, err
 	}
-	if err := e.pushBranchCAS(ctx, ref, p, branch, baseSHA, commitSHA); err != nil {
+	if err := e.pushBranchCAS(ctx, ref, p, branch, baseSHA, commitSHA, newBranch); err != nil {
 		return CommitResult{}, err
 	}
 	// Origin accepted — only now advance the local ref (no persistent
@@ -191,14 +194,37 @@ func (e *Engine) commitTree(ctx context.Context, p repoPaths, tree, parent strin
 	return strings.TrimSpace(string(out)), nil
 }
 
+// branchBase resolves the commit a Mutate should build on for branch. When the
+// branch already exists on origin, its tip is the base. When it does not, the
+// default-branch tip is the base and newBranch is true.
+func (e *Engine) branchBase(ctx context.Context, ref RepoRef, p repoPaths, branch string) (baseSHA string, newBranch bool, err error) {
+	baseSHA, err = e.resolveCommit(ctx, ref, p, "heads/"+branch)
+	if err == nil {
+		return baseSHA, false, nil
+	}
+	if !errors.Is(err, ErrRefNotFound) {
+		return "", false, err
+	}
+	def := defaultBranch(ref)
+	baseSHA, err = e.resolveCommit(ctx, ref, p, "heads/"+def)
+	if err != nil {
+		return "", false, err
+	}
+	return baseSHA, true, nil
+}
+
 // pushBranchCAS pushes the new commit under --force-with-lease pinned to the
 // observed remote SHA — the exact analog of the retired REST fast-forward-only
 // ref update.
 // A rejected lease maps to ErrRefNotFastForward.
-func (e *Engine) pushBranchCAS(ctx context.Context, ref RepoRef, p repoPaths, branch, observedSHA, newSHA string) error {
+func (e *Engine) pushBranchCAS(ctx context.Context, ref RepoRef, p repoPaths, branch, observedSHA, newSHA string, newBranch bool) error {
+	lease := observedSHA
+	if newBranch {
+		lease = ""
+	}
 	_, err := e.remoteGit(ctx, ref, execOpts{},
 		"--git-dir", p.gitDir, "push",
-		"--force-with-lease=refs/heads/"+branch+":"+observedSHA,
+		"--force-with-lease=refs/heads/"+branch+":"+lease,
 		"origin", newSHA+":refs/heads/"+branch)
 	if err != nil {
 		if isNonFastForward(err) {

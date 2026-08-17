@@ -278,6 +278,7 @@ func TestMilestoneIssueCounts_SendsAliasedQueryAndParsesCounts(t *testing.T) {
 	stub.On(http.MethodPost, "/graphql", http.StatusOK,
 		`{"data":{"repository":{"milestone":{
 			"provision":{"totalCount":1},
+			"onboard":{"totalCount":0},
 			"allOpen":{"totalCount":9},
 			"workOrExcluded":{"totalCount":5},
 			"excluded":{"totalCount":2}
@@ -316,9 +317,10 @@ func TestMilestoneIssueCounts_SendsAliasedQueryAndParsesCounts(t *testing.T) {
 	}
 	for _, want := range []string{
 		`provision:      issues(states: [OPEN], labels: ["aep:provision"], first: 1)`,
+		`onboard:        issues(states: [OPEN], labels: ["aep:onboard"], first: 1)`,
 		`allOpen:        issues(states: [OPEN], first: 1)`,
-		`workOrExcluded: issues(states: [OPEN], labels: ["aep", "aep:provision", "aep:validation"], first: 1)`,
-		`excluded:       issues(states: [OPEN], labels: ["aep:provision", "aep:validation"], first: 1)`,
+		`workOrExcluded: issues(states: [OPEN], labels: ["aep", "aep:provision", "aep:validation", "aep:onboard"], first: 1)`,
+		`excluded:       issues(states: [OPEN], labels: ["aep:provision", "aep:validation", "aep:onboard"], first: 1)`,
 		"milestone(number: $m)",
 	} {
 		if !strings.Contains(payload.Query, want) {
@@ -328,13 +330,14 @@ func TestMilestoneIssueCounts_SendsAliasedQueryAndParsesCounts(t *testing.T) {
 	if strings.Contains(payload.Query, "open_issues") || strings.Contains(payload.Query, "openIssueCount") {
 		t.Fatalf("query reads a PR-contaminated count:\n%s", payload.Query)
 	}
-	// Exactly four aliased populations. A fifth would mean somebody re-added an
+	// Exactly five aliased populations: provision, onboard, allOpen,
+	// workOrExcluded, excluded. A sixth would mean somebody re-added an
 	// INTERSECTION alias — the "aep" ∩ gate overlap the old inclusion-exclusion
 	// arithmetic needed. The argument cannot express an intersection, so such an
 	// alias is a WIDER union wearing an overlap's name, and it silently empties
 	// the working set.
-	if got := strings.Count(payload.Query, "issues(states: [OPEN]"); got != 4 {
-		t.Fatalf("query has %d aliased populations, want exactly 4:\n%s", got, payload.Query)
+	if got := strings.Count(payload.Query, "issues(states: [OPEN]"); got != 5 {
+		t.Fatalf("query has %d aliased populations, want exactly 5:\n%s", got, payload.Query)
 	}
 	if req.Header.Get("Authorization") != "Bearer test-token" {
 		t.Fatalf("graphql Authorization = %q, want the credential's bearer token", req.Header.Get("Authorization"))
@@ -345,9 +348,10 @@ func TestMilestoneIssueCounts_SendsAliasedQueryAndParsesCounts(t *testing.T) {
 // below `delivery` and must not depend on it. The literals are the same ones
 // milestoneIssueCountsQuery embeds, which is the coupling under test.
 const (
-	labelWork  = "aep"
-	labelGate  = "aep:provision"
-	labelValid = "aep:validation"
+	labelWork    = "aep"
+	labelGate    = "aep:provision"
+	labelValid   = "aep:validation"
+	labelOnboard = "aep:onboard"
 )
 
 // hostCounts answers the populations the REAL host would report for a milestone
@@ -374,8 +378,9 @@ func hostCounts(issues ...[]string) *sourcecontrol.MilestoneIssueCounts {
 	}
 	return &sourcecontrol.MilestoneIssueCounts{
 		OpenProvision:      anyOf(labelGate),
-		OpenWorkOrExcluded: anyOf(labelWork, labelGate, labelValid),
-		OpenExcluded:       anyOf(labelGate, labelValid),
+		OpenOnboard:        anyOf(labelOnboard),
+		OpenWorkOrExcluded: anyOf(labelWork, labelGate, labelValid, labelOnboard),
+		OpenExcluded:       anyOf(labelGate, labelValid, labelOnboard),
 		OpenTotal:          len(issues),
 	}
 }
@@ -416,6 +421,10 @@ func TestMilestoneIssueCounts_WorkingSetArithmetic(t *testing.T) {
 		{
 			"gates and the validation issue come out of the working set",
 			hostCounts(task, task, task, gate, valid, ledger, ledger), 3,
+		},
+		{
+			"an onboard issue is excluded from the working set the same way a gate is",
+			hostCounts(task, []string{labelOnboard}), 1,
 		},
 		{
 			// One issue carrying BOTH exclusion labels is one member of the

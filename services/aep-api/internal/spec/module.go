@@ -17,8 +17,9 @@
 package spec
 
 import (
+	"context"
+
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/internal/spec/onboarding"
 )
 
 // Deps is what this domain must be handed to exist: typed ports / services,
@@ -46,6 +47,12 @@ type Deps struct {
 	SkillImport *SkillImportService
 	// CollabRepo is the project-ownership oracle behind the two collab ops.
 	CollabRepo sourcecontrol.RepoService
-	// Onboarding is the foreign-repo analysis front door (POST /onboarding).
-	Onboarding *onboarding.Service
+	// Onboarding starts a foreign-repo analysis job (POST /onboarding).
+	Onboarding OnboardingAnalysis
+}
+
+// OnboardingAnalysis is the analysis front door. Declared here so the domain
+// root never imports the onboarding slice — the slice service satisfies it.
+type OnboardingAnalysis interface {
+	StartAnalysis(ctx context.Context, orgID, projectID, sourceRepoRef string) (executionID string, err error)
 }

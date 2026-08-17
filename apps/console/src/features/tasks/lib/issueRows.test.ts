@@ -47,10 +47,11 @@ describe("partitionIssues", () => {
     const p = partitionIssues([
       issue(1, "coding"),
       issue(2, "provision"),
+      issue(4, "onboard"),
       issue(3, "ledger"),
     ]);
     expect(p.work.map((i) => i.issueNumber)).toEqual([1]);
-    expect(p.gates.map((i) => i.issueNumber)).toEqual([2]);
+    expect(p.gates.map((i) => i.issueNumber)).toEqual([2, 4]);
     expect(p.ledger.map((i) => i.issueNumber)).toEqual([3]);
   });
 

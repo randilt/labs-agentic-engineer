@@ -53,6 +53,7 @@ export function issueStateChip(derivedStatus: string): TaskChip {
 // renders untagged rather than guessing a label for it.
 const CHIP_BY_KIND: Record<string, TaskChip> = {
   provision: { label: "Provisioning", tone: "info" },
+  onboard: { label: "Onboarding", tone: "info" },
 };
 
 export function issueKindChip(executorClass: string): TaskChip | null {

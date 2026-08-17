@@ -48,6 +48,7 @@ type Activities struct {
 	deployRead DeploymentReader
 	deployMint DeployIssueMinter
 	gates      Gates
+	onboarder  Onboarder
 	planner    Planner
 }
 
@@ -66,6 +67,7 @@ type Deps struct {
 	Deployments  DeploymentReader
 	DeployIssues DeployIssueMinter
 	Gates        Gates
+	Onboarder    Onboarder
 	Planner      Planner
 }
 
@@ -84,6 +86,7 @@ func NewActivities(d Deps) *Activities {
 		deployRead: d.Deployments,
 		deployMint: d.DeployIssues,
 		gates:      d.Gates,
+		onboarder:  d.Onboarder,
 		planner:    d.Planner,
 	}
 }
@@ -297,9 +300,10 @@ func (a *Activities) PollMilestone(ctx context.Context, in MilestoneRef) (Milest
 		return MilestoneSnapshot{}, nil
 	}
 	return MilestoneSnapshot{
-		Work:  counts.OpenNonGateWork(),
-		Gates: counts.OpenProvision,
-		Total: counts.OpenTotal,
+		Work:    counts.OpenNonGateWork(),
+		Gates:   counts.OpenProvision,
+		Onboard: counts.OpenOnboard,
+		Total:   counts.OpenTotal,
 	}, nil
 }
 
@@ -392,6 +396,15 @@ func (a *Activities) ProvisionGates(ctx context.Context, in PlanMilestoneInput) 
 		return nil
 	}
 	return planErr(a.gates.ProvisionForBuild(ctx, in.OrgID, in.ProjectID, in.Tag, in.MilestoneNumber, in.ProvisionInputs))
+}
+
+// OnboardComponents mints aep:onboard issues and vendors import-as-is components
+// before task planning. Build and deploy follow the ordinary PR-merge fan-out.
+func (a *Activities) OnboardComponents(ctx context.Context, in PlanMilestoneInput) error {
+	if a.onboarder == nil {
+		return nil
+	}
+	return planErr(a.onboarder.OnboardForMilestone(ctx, in.OrgID, in.ProjectID, in.Tag, in.MilestoneNumber))
 }
 
 // PlanMilestone runs the version's planning turn.

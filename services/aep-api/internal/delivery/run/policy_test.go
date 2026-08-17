@@ -34,6 +34,7 @@ func TestDispatchable(t *testing.T) {
 	}{
 		{"work, no gate", MilestoneSnapshot{Work: 2, Total: 2}, true},
 		{"a gate holds the dispatch", MilestoneSnapshot{Work: 2, Gates: 1, Total: 3}, false},
+		{"an onboard issue holds the dispatch", MilestoneSnapshot{Work: 2, Onboard: 1, Total: 3}, false},
 		{"ledger only — open issues, nothing to work", MilestoneSnapshot{Work: 0, Total: 4}, false},
 		{"empty milestone", MilestoneSnapshot{}, false},
 		{"a gate with nothing to hold", MilestoneSnapshot{Work: 0, Gates: 1, Total: 1}, false},

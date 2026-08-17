@@ -35,13 +35,14 @@ import (
 // validation issue — which is deliberately narrower than "some issue is open":
 // a milestone holding only ledger issues has nothing to work.
 type MilestoneSnapshot struct {
-	Work  int `json:"work"`
-	Gates int `json:"gates"`
-	Total int `json:"total"`
+	Work    int `json:"work"`
+	Gates   int `json:"gates"`
+	Onboard int `json:"onboard"`
+	Total   int `json:"total"`
 }
 
 // Dispatchable is the dispatch predicate, and it guards EVERY cycle boundary:
-// no gate is open in the milestone, and its working set is non-empty.
+// no gate or onboard issue is open in the milestone, and its working set is non-empty.
 //
 // A hand-filed mid-run gate is therefore a deliberate human brake — it holds
 // the next dispatch, and only the next dispatch. A stray gate never blocks
@@ -49,7 +50,7 @@ type MilestoneSnapshot struct {
 // runs before this one: gates hold dispatch, and with nothing to dispatch they
 // hold nothing.
 func Dispatchable(s MilestoneSnapshot) bool {
-	return s.Gates == 0 && s.Work > 0
+	return s.Gates == 0 && s.Onboard == 0 && s.Work > 0
 }
 
 // nextCycleKind picks what the next cycle is for, from what the previous one

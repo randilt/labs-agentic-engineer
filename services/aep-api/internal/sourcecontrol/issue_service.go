@@ -72,6 +72,8 @@ type IssueService interface {
 	// request — the path-based build trigger's input for mapping a merged PR's
 	// diff onto the components whose source it touched.
 	ListPullRequestFiles(ctx context.Context, orgID, projectID string, number int) ([]string, error)
+	// CreatePullRequest opens a pull request from head→base on the project repo.
+	CreatePullRequest(ctx context.Context, orgID, projectID string, req CreatePullRequestRequest) (*PullRequestResult, error)
 
 	// The milestone surface — one spec version's delivery increment and ledger.
 	// Implementations in milestone_ops.go.
@@ -414,6 +416,14 @@ func (s *issueService) ListPullRequestFiles(ctx context.Context, orgID, projectI
 	return s.github.ListPullRequestFiles(ctx, owner, repoName, cred, number)
 }
 
+func (s *issueService) CreatePullRequest(ctx context.Context, orgID, projectID string, req CreatePullRequestRequest) (*PullRequestResult, error) {
+	owner, repoName, cred, err := s.resolveRepoAndCredential(ctx, orgID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return s.github.CreatePullRequest(ctx, owner, repoName, cred, req)
+}
+
 // resolveRepoAndCredential looks up the project's git repository, parses its
 // owner/repo from the clone URL, and resolves the org's credential. Every
 // GitHub-bound op routes through here — the multi-tenant invariant
@@ -475,6 +485,8 @@ func labelColor(name string) string {
 		return "d93f0b" // red-orange — a gate holding dispatch
 	case "aep:validation":
 		return "0e8a16" // green — the validation cycle
+	case "aep:onboard":
+		return "fbca04" // yellow — import-as-is vendoring
 	case "aep:codingagent":
 		return "5319e7" // violet — the GitHub-side adoption trigger
 	case "implementation":

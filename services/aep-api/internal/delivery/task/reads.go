@@ -250,6 +250,8 @@ func taskKind(labels []string) string {
 	switch {
 	case delivery.HasLabel(labels, delivery.LabelProvisionGate):
 		return "provision"
+	case delivery.HasLabel(labels, delivery.LabelOnboard):
+		return "onboard"
 	case delivery.HasLabel(labels, delivery.LabelValidationWork):
 		return "validation"
 	case delivery.HasLabel(labels, delivery.LabelAgentWork):

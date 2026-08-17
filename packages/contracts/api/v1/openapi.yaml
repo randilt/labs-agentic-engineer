@@ -5249,7 +5249,8 @@ components:
           description: >-
             Label-derived kind of the issue, and the only classification the
             platform makes of one: `coding` for agent work (the `aep` label),
-            `provision` for a dispatch gate (`aep:provision`), `validation` for
+            `provision` for a dispatch gate (`aep:provision`), `onboard` for
+            import-as-is vendoring (`aep:onboard`), `validation` for
             the run's validation issue, `ledger` for a bare human issue that
             joined the milestone carrying none of them. Nothing here is parsed
             out of the body — issue bodies are prose the platform writes for
@@ -5257,6 +5258,7 @@ components:
           enum:
           - coding
           - provision
+          - onboard
           - validation
           - ledger
           type: string
@@ -5354,7 +5356,8 @@ components:
           description: >-
             Label-derived kind of the issue, and the only classification the
             platform makes of one: `coding` for agent work (the `aep` label),
-            `provision` for a dispatch gate (`aep:provision`), `validation` for
+            `provision` for a dispatch gate (`aep:provision`), `onboard` for
+            import-as-is vendoring (`aep:onboard`), `validation` for
             the run's validation issue, `ledger` for a bare human issue that
             joined the milestone carrying none of them. Nothing here is parsed
             out of the body — issue bodies are prose the platform writes for
@@ -5362,6 +5365,7 @@ components:
           enum:
           - coding
           - provision
+          - onboard
           - validation
           - ledger
           type: string

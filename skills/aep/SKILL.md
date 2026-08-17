@@ -93,7 +93,7 @@ very issue this cycle exists to work, is invisible to it.
 Your working set is every issue **carrying the `aep` label** and carrying neither
 `aep:provision` (a platform gate — the run does not start while one is open, and
 you never touch them) nor `aep:validation` (a separate validation run works
-those).
+those) nor `aep:onboard` (import-as-is vendoring — the ops executor works those).
 
 Any open issue in the milestone **without** the `aep` label is a **ledger**
 issue — a human's note. **Never touch one**: don't work it, comment on it, or
@@ -374,7 +374,7 @@ web search. The rest belongs to the run:
   cannot link it and will not merge it. Or open more than one for this cycle.
 - Run `gh pr merge`, `gh pr close`, `gh repo create`, `gh repo delete`,
   `gh repo fork`, or `gh repo edit`.
-- Touch a ledger issue, an `aep:provision` gate, or an `aep:validation` issue.
+- Touch a ledger issue, an `aep:provision` gate, an `aep:onboard` issue, or an `aep:validation` issue.
 - Delete remote branches (`git push --delete`, `git push origin :branch`).
 - Modify branch protection, secrets, repository settings, collaborators, or
   webhooks.

@@ -265,6 +265,9 @@ func (f *fakeIssueSvc) MergePullRequest(context.Context, string, string, int) er
 func (f *fakeIssueSvc) ListPullRequestFiles(context.Context, string, string, int) ([]string, error) {
 	panic("fakeIssueSvc: ListPullRequestFiles not expected")
 }
+func (f *fakeIssueSvc) CreatePullRequest(context.Context, string, string, sourcecontrol.CreatePullRequestRequest) (*sourcecontrol.PullRequestResult, error) {
+	panic("fakeIssueSvc: CreatePullRequest not expected")
+}
 func (f *fakeIssueSvc) CreateMilestone(context.Context, string, string, sourcecontrol.CreateMilestoneRequest) (*sourcecontrol.MilestoneResult, error) {
 	panic("fakeIssueSvc: CreateMilestone not expected")
 }

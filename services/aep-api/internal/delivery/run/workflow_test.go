@@ -123,6 +123,7 @@ func newHarness(t *testing.T) *harness {
 	h.env.RegisterActivity(acts.MintValidationRepairIssues)
 	h.env.RegisterActivity(acts.DispatchAgent)
 	h.env.RegisterActivity(acts.ProvisionGates)
+	h.env.RegisterActivity(acts.OnboardComponents)
 	h.env.RegisterActivity(acts.PlanMilestone)
 	h.env.RegisterActivity(acts.PlanDeployWaves)
 	h.env.RegisterActivity(acts.DeployCycle)
@@ -194,6 +195,7 @@ func (h *harness) planIs(gatesErr, planErr error) {
 			defer h.mu.Unlock()
 			h.gateMints = append(h.gateMints, args.Get(1).(PlanMilestoneInput))
 		}).Return(gatesErr)
+	h.env.OnActivity(h.acts.OnboardComponents, mock.Anything, mock.Anything).Return(nil)
 	h.env.OnActivity(h.acts.PlanMilestone, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			h.mu.Lock()

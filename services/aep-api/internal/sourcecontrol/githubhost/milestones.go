@@ -313,9 +313,10 @@ const milestoneIssueCountsQuery = `query($owner: String!, $repo: String!, $m: In
   repository(owner: $owner, name: $repo) {
     milestone(number: $m) {
       provision:      issues(states: [OPEN], labels: ["aep:provision"], first: 1) { totalCount }
+      onboard:        issues(states: [OPEN], labels: ["aep:onboard"], first: 1) { totalCount }
       allOpen:        issues(states: [OPEN], first: 1) { totalCount }
-      workOrExcluded: issues(states: [OPEN], labels: ["aep", "aep:provision", "aep:validation"], first: 1) { totalCount }
-      excluded:       issues(states: [OPEN], labels: ["aep:provision", "aep:validation"], first: 1) { totalCount }
+      workOrExcluded: issues(states: [OPEN], labels: ["aep", "aep:provision", "aep:validation", "aep:onboard"], first: 1) { totalCount }
+      excluded:       issues(states: [OPEN], labels: ["aep:provision", "aep:validation", "aep:onboard"], first: 1) { totalCount }
     }
   }
 }`
@@ -333,6 +334,7 @@ func (c *Client) MilestoneIssueCounts(ctx context.Context, owner, repo string, c
 		Repository *struct {
 			Milestone *struct {
 				Provision      countAlias `json:"provision"`
+				Onboard        countAlias `json:"onboard"`
 				AllOpen        countAlias `json:"allOpen"`
 				WorkOrExcluded countAlias `json:"workOrExcluded"`
 				Excluded       countAlias `json:"excluded"`
@@ -349,6 +351,7 @@ func (c *Client) MilestoneIssueCounts(ctx context.Context, owner, repo string, c
 	ms := data.Repository.Milestone
 	return &sourcecontrol.MilestoneIssueCounts{
 		OpenProvision:      ms.Provision.TotalCount,
+		OpenOnboard:        ms.Onboard.TotalCount,
 		OpenTotal:          ms.AllOpen.TotalCount,
 		OpenWorkOrExcluded: ms.WorkOrExcluded.TotalCount,
 		OpenExcluded:       ms.Excluded.TotalCount,

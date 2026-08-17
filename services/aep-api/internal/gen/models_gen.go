@@ -371,6 +371,7 @@ func (e SkillUpdateState) Valid() bool {
 const (
 	TaskDetailExecutorClassCoding     TaskDetailExecutorClass = "coding"
 	TaskDetailExecutorClassLedger     TaskDetailExecutorClass = "ledger"
+	TaskDetailExecutorClassOnboard    TaskDetailExecutorClass = "onboard"
 	TaskDetailExecutorClassProvision  TaskDetailExecutorClass = "provision"
 	TaskDetailExecutorClassValidation TaskDetailExecutorClass = "validation"
 )
@@ -381,6 +382,8 @@ func (e TaskDetailExecutorClass) Valid() bool {
 	case TaskDetailExecutorClassCoding:
 		return true
 	case TaskDetailExecutorClassLedger:
+		return true
+	case TaskDetailExecutorClassOnboard:
 		return true
 	case TaskDetailExecutorClassProvision:
 		return true
@@ -419,6 +422,7 @@ func (e TaskStreamEventType) Valid() bool {
 const (
 	TaskViewExecutorClassCoding     TaskViewExecutorClass = "coding"
 	TaskViewExecutorClassLedger     TaskViewExecutorClass = "ledger"
+	TaskViewExecutorClassOnboard    TaskViewExecutorClass = "onboard"
 	TaskViewExecutorClassProvision  TaskViewExecutorClass = "provision"
 	TaskViewExecutorClassValidation TaskViewExecutorClass = "validation"
 )
@@ -429,6 +433,8 @@ func (e TaskViewExecutorClass) Valid() bool {
 	case TaskViewExecutorClassCoding:
 		return true
 	case TaskViewExecutorClassLedger:
+		return true
+	case TaskViewExecutorClassOnboard:
 		return true
 	case TaskViewExecutorClassProvision:
 		return true
@@ -1635,7 +1641,7 @@ type TaskDetail struct {
 	ExecutionHistory []ExecutionView          `json:"executionHistory"`
 	Executions       map[string]ExecutionView `json:"executions"`
 
-	// ExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
+	// ExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `onboard` for import-as-is vendoring (`aep:onboard`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
 	ExecutorClass TaskDetailExecutorClass `json:"executorClass"`
 	Hold          bool                    `json:"hold"`
 	IssueNumber   int64                   `json:"issueNumber"`
@@ -1647,7 +1653,7 @@ type TaskDetail struct {
 	Title         string                  `json:"title"`
 }
 
-// TaskDetailExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
+// TaskDetailExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `onboard` for import-as-is vendoring (`aep:onboard`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
 type TaskDetailExecutorClass string
 
 // TaskStreamEvent One SSE frame on the task-log stream. `type` discriminates the payload: `task` carries the full TaskView (client upserts by issue), `execution` one ExecutionView (client upserts by id), `line` one TimelineEvent (client appends, deduped by executionId+seq), and `done` the settled derivedStatus (the server then closes the stream).
@@ -1677,7 +1683,7 @@ type TaskView struct {
 	DerivedStatus string                   `json:"derivedStatus"`
 	Executions    map[string]ExecutionView `json:"executions"`
 
-	// ExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
+	// ExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `onboard` for import-as-is vendoring (`aep:onboard`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
 	ExecutorClass TaskViewExecutorClass `json:"executorClass"`
 	Hold          bool                  `json:"hold"`
 	IssueNumber   int64                 `json:"issueNumber"`
@@ -1692,7 +1698,7 @@ type TaskView struct {
 	Usage Usage `json:"usage,omitempty"`
 }
 
-// TaskViewExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
+// TaskViewExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `onboard` for import-as-is vendoring (`aep:onboard`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
 type TaskViewExecutorClass string
 
 // TimelineEvent A unified-timeline entry: today's ProgressEvent (phase | tool_use | git_commit | git_push | gh_action | build_step | log | result) plus its attribution — which execution attempt it came from. This is the per-row shape the console renders; the FE groups rows by executionId/kind.

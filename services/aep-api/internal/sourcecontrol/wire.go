@@ -146,13 +146,16 @@ type MilestoneIssueCounts struct {
 	// OpenProvision is every open gate, whether or not it also carries "aep".
 	// One open gate holds the next dispatch.
 	OpenProvision int
+	// OpenOnboard is every open import-as-is vendoring issue (aep:onboard).
+	// One open onboard issue holds the next dispatch the same way a gate does.
+	OpenOnboard int
 	// OpenTotal is every open issue in the milestone, ledger included. It says
 	// whether the milestone is finished, not whether it is workable.
 	OpenTotal int
-	// OpenWorkOrExcluded is |"aep" ∪ "aep:provision" ∪ "aep:validation"|: every
+	// OpenWorkOrExcluded is |"aep" ∪ "aep:provision" ∪ "aep:validation" ∪ "aep:onboard"|: every
 	// open issue that is agent work or an exclusion from it.
 	OpenWorkOrExcluded int
-	// OpenExcluded is |"aep:provision" ∪ "aep:validation"|: the exclusions on
+	// OpenExcluded is |"aep:provision" ∪ "aep:validation" ∪ "aep:onboard"|: the exclusions on
 	// their own. Gates are never a coding cycle's work, and the validation issue
 	// is the validation cycle's.
 	OpenExcluded int
@@ -263,6 +266,20 @@ type PullRequestState struct {
 	State          string // "open" | "closed"
 	Merged         bool
 	MergeCommitSHA string
+}
+
+// CreatePullRequestRequest maps to POST /repos/{owner}/{repo}/pulls.
+type CreatePullRequestRequest struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Head  string `json:"head"`
+	Base  string `json:"base"`
+}
+
+// PullRequestResult is the metadata returned after creating a pull request.
+type PullRequestResult struct {
+	Number int    `json:"number"`
+	URL    string `json:"url"`
 }
 
 // ----- Status errors -----

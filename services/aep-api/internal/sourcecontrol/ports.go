@@ -110,6 +110,8 @@ type IssueOps interface {
 	// request. The path-based build trigger maps these onto the components whose
 	// source they touched so a merged PR rebuilds every affected component.
 	ListPullRequestFiles(ctx context.Context, owner, repo string, cred secrets.Credential, number int) ([]string, error)
+	// CreatePullRequest opens a pull request from head→base on the repository.
+	CreatePullRequest(ctx context.Context, owner, repo string, cred secrets.Credential, req CreatePullRequestRequest) (*PullRequestResult, error)
 
 	// CreateMilestone creates a milestone and returns its number, minting it or
 	// adopting an existing one with that title. Implementations MUST be

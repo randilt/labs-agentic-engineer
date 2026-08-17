@@ -230,6 +230,16 @@ func (l *loop) run(ctx workflow.Context) (RunResult, error) {
 		// and with an empty working set there is nothing to dispatch, so it holds
 		// nothing.
 		if snap.Work == 0 {
+			if snap.Onboard > 0 {
+				cancelled, perr := l.park(ctx)
+				if perr != nil {
+					return l.result(), perr
+				}
+				if cancelled {
+					return l.settle(ctx, delivery.RunStateCancelled, "")
+				}
+				continue
+			}
 			settled, res, err := l.onEmptyWorkingSet(ctx)
 			if settled || err != nil {
 				return res, err
@@ -328,6 +338,14 @@ func (l *loop) fillMilestone(ctx workflow.Context) (settled bool, res RunResult,
 			return true, l.result(), err
 		}
 		workflow.GetLogger(ctx).Error("provisioning the version's gates failed", "error", gerr)
+		return true, res, nil
+	}
+	if oerr := workflow.ExecuteActivity(activityCtx(ctx), (*Activities).OnboardComponents, in).Get(ctx, nil); oerr != nil {
+		res, err = l.settle(ctx, delivery.RunStateFailed, delivery.RunReasonPlanFailed)
+		if err != nil {
+			return true, l.result(), err
+		}
+		workflow.GetLogger(ctx).Error("onboarding import-as-is components failed", "error", oerr)
 		return true, res, nil
 	}
 	if perr := workflow.ExecuteActivity(activityCtx(ctx), (*Activities).PlanMilestone, in).Get(ctx, nil); perr != nil {

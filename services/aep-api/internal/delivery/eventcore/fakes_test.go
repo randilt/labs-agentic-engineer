@@ -284,9 +284,10 @@ func hostCounts(issues ...[]string) *sourcecontrol.MilestoneIssueCounts {
 	}
 	return &sourcecontrol.MilestoneIssueCounts{
 		OpenProvision: anyOf(delivery.LabelProvisionGate),
+		OpenOnboard:   anyOf(delivery.LabelOnboard),
 		OpenWorkOrExcluded: anyOf(delivery.LabelAgentWork,
-			delivery.LabelProvisionGate, delivery.LabelValidationWork),
-		OpenExcluded: anyOf(delivery.LabelProvisionGate, delivery.LabelValidationWork),
+			delivery.LabelProvisionGate, delivery.LabelValidationWork, delivery.LabelOnboard),
+		OpenExcluded: anyOf(delivery.LabelProvisionGate, delivery.LabelValidationWork, delivery.LabelOnboard),
 		OpenTotal:    len(issues),
 	}
 }
