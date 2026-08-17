@@ -134,3 +134,33 @@ func TestDockerfilePresent(t *testing.T) {
 		t.Error("Dockerfile at root not detected")
 	}
 }
+
+func TestDefaultImportAsIsDockerfile(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		language, componentType, want string
+	}{
+		{"Ballerina", "service", "ballerina/ballerina:"},
+		{"Go", "service", "golang:1.25-alpine"},
+		{"TypeScript", "web-application", "npm run build"},
+		{"JavaScript", "service", `"npm", "start"`},
+	} {
+		t.Run(tc.language+"/"+tc.componentType, func(t *testing.T) {
+			body, err := defaultImportAsIsDockerfile(tc.language, tc.componentType)
+			if err != nil {
+				t.Fatalf("synthesize: %v", err)
+			}
+			got := string(body)
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("Dockerfile missing %q:\n%s", tc.want, got)
+			}
+			if !strings.Contains(got, "EXPOSE 9090") {
+				t.Error("Dockerfile does not EXPOSE 9090")
+			}
+		})
+	}
+
+	if _, err := defaultImportAsIsDockerfile("Python", "service"); err == nil {
+		t.Fatal("expected error for unsupported language")
+	}
+}

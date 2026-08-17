@@ -34,9 +34,11 @@ import (
 	"github.com/wso2/aep/aep-api/internal/spec/onboarding"
 )
 
-// vendorComponent clones the component's foreign source, commits it unmodified
-// onto aep/onboard/<component>, and opens a pull request that resolves the
-// onboard issue.
+// vendorComponent clones the component's foreign source onto
+// aep/onboard/<component> and opens a pull request that resolves the onboard
+// issue. The tree is unmodified except when the vendored root has no
+// Dockerfile: import-as-is still needs a docker buildpack, so a language
+// default is synthesized into the PR.
 func (s *Service) vendorComponent(ctx context.Context, orgID, projectID, repo string, comp spec.DesignComponent, issueNumber int) error {
 	if comp.Source == nil || strings.TrimSpace(comp.Source.Repo) == "" {
 		return s.failOnboard(ctx, orgID, projectID, issueNumber, comp.Name, "", "component source pointer is missing")
@@ -80,16 +82,21 @@ func (s *Service) vendorComponent(ctx context.Context, orgID, projectID, repo st
 		return nil
 	}
 
-	if !dockerfilePresent(root) {
-		s.failOnboard(ctx, orgID, projectID, issueNumber, comp.Name, execID,
-			"no Dockerfile at vendored root — add one in the source repo before onboarding")
-		return nil
-	}
-
 	files, err := collectTree(root)
 	if err != nil {
 		s.failOnboard(ctx, orgID, projectID, issueNumber, comp.Name, execID, "read source tree: "+err.Error())
 		return nil
+	}
+	if !dockerfilePresent(root) {
+		body, derr := defaultImportAsIsDockerfile(comp.Language, comp.ComponentType)
+		if derr != nil {
+			s.failOnboard(ctx, orgID, projectID, issueNumber, comp.Name, execID,
+				"no Dockerfile at vendored root and none could be synthesized: "+derr.Error())
+			return nil
+		}
+		files["Dockerfile"] = body
+		slog.InfoContext(ctx, "onboard: synthesized Dockerfile for import-as-is component",
+			"component", comp.Name, "language", comp.Language, "type", comp.ComponentType)
 	}
 
 	appPath := strings.Trim(comp.AppPath, "/")
@@ -167,6 +174,88 @@ func dockerfilePresent(root string) bool {
 	}
 	return false
 }
+
+// defaultImportAsIsDockerfile is the docker buildpack overlay for a foreign
+// tree that never shipped one. Templates match the org language skills
+// (ballerina / go / react-webapp) so a later modernize sibling is not starting
+// from a different shape. Node web-apps skip the nginx drop-in: that needs
+// files the source repo does not have; serve-on-9090 is enough to build.
+func defaultImportAsIsDockerfile(language, componentType string) ([]byte, error) {
+	family := dockerfileLangFamily(language)
+	kind := strings.ToLower(strings.TrimSpace(componentType))
+	switch family {
+	case "ballerina":
+		return []byte(importAsIsBallerinaDockerfile), nil
+	case "go":
+		return []byte(importAsIsGoDockerfile), nil
+	case "node":
+		if kind == spec.ComponentTypeWebApplication {
+			return []byte(importAsIsNodeWebappDockerfile), nil
+		}
+		return []byte(importAsIsNodeServiceDockerfile), nil
+	default:
+		return nil, fmt.Errorf("no default Dockerfile for language %q type %q", language, componentType)
+	}
+}
+
+func dockerfileLangFamily(language string) string {
+	lang := strings.ToLower(strings.TrimSpace(language))
+	lang = strings.ReplaceAll(lang, ".", "")
+	switch {
+	case lang == "ballerina" || strings.HasPrefix(lang, "ballerina "):
+		return "ballerina"
+	case lang == "go" || lang == "golang":
+		return "go"
+	case lang == "typescript" || lang == "javascript" || lang == "ts" || lang == "js" || lang == "node" || lang == "nodejs":
+		return "node"
+	default:
+		return ""
+	}
+}
+
+const importAsIsBallerinaDockerfile = `FROM ballerina/ballerina:2201.13.5 AS builder
+WORKDIR /src
+COPY --chown=ballerina:troupe . .
+RUN bal build && mv target/bin/*.jar /tmp/service.jar
+
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY --from=builder /tmp/service.jar /app/service.jar
+EXPOSE 9090
+ENTRYPOINT ["java", "-jar", "/app/service.jar"]
+`
+
+const importAsIsGoDockerfile = `FROM golang:1.25-alpine AS builder
+WORKDIR /src
+COPY go.mod ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -ldflags='-s -w' -o /out/app ./
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /out/app /app
+EXPOSE 9090
+ENTRYPOINT ["/app"]
+`
+
+const importAsIsNodeWebappDockerfile = `FROM node:20-alpine
+WORKDIR /app
+COPY . .
+RUN if [ -f package-lock.json ]; then npm ci; else npm i; fi \
+ && npm run build \
+ && npm i -g serve@14
+EXPOSE 9090
+CMD ["sh", "-c", "d=dist; [ -d build ] && [ ! -d dist ] && d=build; exec serve -s \"$d\" -l 9090"]
+`
+
+const importAsIsNodeServiceDockerfile = `FROM node:20-alpine
+WORKDIR /app
+COPY . .
+RUN if [ -f package-lock.json ]; then npm ci; else npm i; fi
+EXPOSE 9090
+CMD ["npm", "start"]
+`
 
 func collectTree(root string) (map[string][]byte, error) {
 	out := map[string][]byte{}

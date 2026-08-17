@@ -119,9 +119,9 @@ const FLOW_SUPPORTING_SKILLS: Record<string, string[]> = {
   // cached read costs a tenth of a re-prefill. Org-authored design skills stay
   // lazy: this map is flow wording and cannot know a given org's catalog.
   design: ["cell-design", "architecture", "security-design", "openapi-conventions", "wireframes", "validation-criteria"],
-  // `/onboard` walks the same downstream lineup as `/design` — cell, enrich,
-  // artifacts, validation last — so the same bodies are inlined up front.
-  onboard: ["cell-design", "architecture", "security-design", "openapi-conventions", "wireframes", "validation-criteria"],
+  // `/onboard` mints a PRD from facts first (the build gate requires numbered
+  // stories), then walks the same downstream lineup as `/design`.
+  onboard: ["prd-contract", "cell-design", "architecture", "security-design", "openapi-conventions", "wireframes", "validation-criteria"],
 };
 
 // --- Composition -------------------------------------------------------------

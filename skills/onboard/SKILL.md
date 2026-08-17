@@ -44,40 +44,49 @@ in this skill's `references/analysis.md`):
 
 `gaps` are reported unknowns — leave them unresolved rather than filling them.
 
-When no PRD exists, these facts are the requirement the lineup below reads:
-actors, routes, and external systems come from the facts, never from invention.
+When no PRD exists, these facts are still the brief — but the build gate
+requires `specs/requirements/prd.md` with numbered User Stories. Mint that
+PRD from the facts (do not interview). Actors, routes, and external systems
+come from the facts, never from invention.
 
 ## The lineup
 
 Each step names the skill that governs it. Those bodies are inlined for this
 turn — apply them directly, and load one only if you find you do not have it.
 
-1. **design.cell** (`cell-design`) — emit the cell FIRST: every component,
+1. **prd.md** (`prd-contract`) — if `specs/requirements/prd.md` is missing,
+   write it FIRST from the facts: a short Overview, Actors inferred from auth
+   routes / IdP calls, and `## User Stories` as a numbered `N. As a …, I want
+   …, so that …` list covering the extracted routes and entry points. The
+   build gate refuses a design with no stories. Skip this step when a PRD
+   already exists.
+2. **design.cell** (`cell-design`) — emit the cell FIRST: every component,
    boundaries and edges. The console streams it into the live diagram, and
    the platform scaffolds a design.json skeleton per deployable component
    when it lands.
-2. **Component enrichment** (`architecture`) — fill each
+3. **Component enrichment** (`architecture`) — fill each
    component's design.json: language (org Tech stack default first), the PRD
    `stories` it serves (every story the PRD defines must be claimed by some
    component — the build gate checks coverage), dependencies (discover before
    you invent), description, pinned skills.
-3. **design.md** — a DIAGRAM document, mermaid throughout: one Overview
+4. **design.md** — a DIAGRAM document, mermaid throughout: one Overview
    paragraph, then `## Context (C1)` (a mermaid graph: the PRD's actors, the
    system, external systems), `## Domain model (ER)` (a mermaid erDiagram:
    entities, key fields, relations — these become the API schemas), and
    `## Key flows` (one mermaid sequenceDiagram per core workflow). No
    Components or Interactions prose — the cell owns C2.
-4. **security.md** (`security-design`) — when the design has sign-in or roles.
-5. **Per-component artifacts** — every `service` gets `openapi.yaml`
+5. **security.md** (`security-design`) — when the design has sign-in or roles.
+6. **Per-component artifacts** — every `service` gets `openapi.yaml`
    (`openapi-conventions`); every `web-application` gets `wireframes.dsl`
    (`wireframes`).
-6. **Validation criteria** (`validation-criteria`) — mint
+7. **Validation criteria** (`validation-criteria`) — mint
    `specs/validation/validation-criteria.json` LAST. A design without its
    acceptance oracle is unfinished — never skip this.
 
-Order binds only where a step reads an earlier one's result: the cell before
-enrichment (the platform scaffolds each design.json from it), and design.md's
-ER model before `openapi.yaml` (those entities become the API schemas).
+Order binds only where a step reads an earlier one's result: the PRD before
+enrichment (story numbers must exist to claim), the cell before enrichment
+(the platform scaffolds each design.json from it), and design.md's ER model
+before `openapi.yaml` (those entities become the API schemas).
 Everything else is independent — emit independent artifacts as parallel calls
 in ONE step, not a step each.
 

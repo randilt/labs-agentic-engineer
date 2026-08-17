@@ -179,10 +179,11 @@ test("the design flow inlines its whole lineup, in lineup order", () => {
   ]);
 });
 
-test("the onboard flow inlines the same lineup as design", () => {
+test("the onboard flow inlines prd-contract then the design lineup", () => {
   const design = eagerSkillsFor({ kind: "flow", skill: "design" });
   assert.deepEqual(eagerSkillsFor({ kind: "flow", skill: "onboard" }), [
     "onboard",
+    "prd-contract",
     ...design.slice(1),
   ]);
 });
