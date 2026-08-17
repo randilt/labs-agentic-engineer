@@ -28,7 +28,9 @@ citations — you never write it.
 
 - **One component, one Task.** Title it after the work — "Implement
   order-service" fresh, "Add refunds to order-service" for a delta. Titles
-  unique and human-readable.
+  unique and human-readable. Skip any component whose `sourceMode` is
+  `"importAsIs"`. A `modernize` component, or one with no `sourceMode`,
+  plans as today.
 - **rationale** is one sentence: why this Task exists.
 - **dependsOn** are **component names** from the design's edges: if
   `order-service` calls `user-service`, its Task depends on
@@ -48,6 +50,9 @@ citations — you never write it.
 **Gates are flagged, never minted**: the platform authors gate issues; you
 emit no Task for a gate. Each design dependency is accounted for exactly once
 — in `dependsOn` (component kind) or in a rationale (the other three).
+
+**Import-as-is components are flagged, never tasked**: the ops executor
+vendors them; you emit no Task for a component with `sourceMode: importAsIs`.
 
 ## Fresh and incremental are the same flow
 
@@ -71,8 +76,18 @@ After planning, write every planned Task's full body via `updateTask` before
 the turn ends — `## Scope` (the concrete work, citing the component's
 design.json and its openapi.yaml/wireframes.dsl), `## Acceptance` (what done
 means, at work altitude — the validation oracle owns product acceptance), and
-`## References` (the spec paths the coding agent reads). A Task without a body
-is unfinished planning.
+`## References` (the spec paths the coding agent reads; when `modernizes` is
+set, also name the paired legacy component — its design.json and the
+vendored source at its appPath). A Task without a body is unfinished planning.
+
+```markdown
+## References
+
+- specs/design/components/orders-api-next/design.json
+- specs/design/components/orders-api-next/openapi.yaml
+- specs/design/components/orders-api/design.json
+- specs/design/components/orders-api/ (vendored source at appPath — the behaviour this Task rebuilds)
+```
 
 ## When a tool rejects you
 
