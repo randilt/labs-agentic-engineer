@@ -738,3 +738,128 @@ func TestComponentDesignJSON_CarriesTheSiblingEndpointWiring(t *testing.T) {
 		t.Errorf("round-trip changed the endpoint wiring: %+v", got.Endpoint)
 	}
 }
+
+func TestComponentDesignJSON_OnboardingRoundTrip(t *testing.T) {
+	raw := `{
+  "name": "orders-api",
+  "type": "service",
+  "version": "0.1.0",
+  "language": "Go",
+  "buildpack": "docker",
+  "appPath": "orders-api",
+  "entrypoint": "deployment/service",
+  "exposure": "intranet",
+  "description": "Vendored unmodified from the legacy repo.",
+  "dependencies": [],
+  "sourceMode": "importAsIs",
+  "source": {
+    "repo": "acme/legacy",
+    "ref": "abc123",
+    "subpath": "services/orders"
+  }
+}
+`
+	comp, err := parseComponentDesignJSON("orders-api", raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !comp.IsImportAsIs() || comp.IsModernize() {
+		t.Fatalf("mode helpers drifted: sourceMode=%q", comp.SourceMode)
+	}
+	if comp.Source == nil || comp.Source.Repo != "acme/legacy" || comp.Source.Ref != "abc123" ||
+		comp.Source.Subpath != "services/orders" {
+		t.Fatalf("source drifted: %+v", comp.Source)
+	}
+	out, err := marshalComponentDesignJSON("orders-api", comp)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(out) != raw {
+		t.Fatalf("round-trip not byte-identical:\n--- got ---\n%s\n--- want ---\n%s", out, raw)
+	}
+}
+
+func TestComponentDesignJSON_ModernizeRoundTrip(t *testing.T) {
+	raw := `{
+  "name": "orders-api-next",
+  "type": "service",
+  "version": "0.1.0",
+  "language": "Ballerina",
+  "buildpack": "docker",
+  "appPath": "orders-api-next",
+  "entrypoint": "deployment/service",
+  "exposure": "intranet",
+  "description": "Rebuild of orders-api.",
+  "dependencies": [],
+  "sourceMode": "modernize",
+  "source": {
+    "repo": "acme/legacy",
+    "ref": "abc123",
+    "subpath": "services/orders"
+  },
+  "modernizes": "orders-api"
+}
+`
+	comp, err := parseComponentDesignJSON("orders-api-next", raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !comp.IsModernize() || comp.Modernizes != "orders-api" {
+		t.Fatalf("modernize drifted: %+v", comp)
+	}
+	out, err := marshalComponentDesignJSON("orders-api-next", comp)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(out) != raw {
+		t.Fatalf("round-trip not byte-identical:\n--- got ---\n%s\n--- want ---\n%s", out, raw)
+	}
+}
+
+func TestParseComponentDesignJSON_OnboardingRejected(t *testing.T) {
+	base := func(extra string) string {
+		return `{
+  "name": "orders-api",
+  "type": "service",
+  "version": "0.1.0",
+  "language": "Go",
+  "buildpack": "docker",
+  "appPath": "orders-api",
+  "entrypoint": "deployment/service",
+  "exposure": "intranet",
+  "description": "x",
+  "dependencies": []` + extra + `
+}`
+	}
+	cases := []struct {
+		name  string
+		extra string
+		want  string
+	}{
+		{"sourceMode without source", `,
+  "sourceMode": "importAsIs"`, "source is required"},
+		{"source without sourceMode", `,
+  "source": {"repo": "acme/legacy", "ref": "abc123", "subpath": "."}`, "sourceMode is required"},
+		{"modernize without modernizes", `,
+  "sourceMode": "modernize",
+  "source": {"repo": "acme/legacy", "ref": "abc123", "subpath": "."}`, "modernizes is required"},
+		{"modernizes names itself", `,
+  "sourceMode": "modernize",
+  "source": {"repo": "acme/legacy", "ref": "abc123", "subpath": "."},
+  "modernizes": "orders-api"`, "not itself"},
+		{"unknown sourceMode", `,
+  "sourceMode": "generated",
+  "source": {"repo": "acme/legacy", "ref": "abc123", "subpath": "."}`, "sourceMode"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := parseComponentDesignJSON("orders-api", base(c.extra))
+			if err == nil {
+				t.Fatalf("want reject")
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("error %q does not contain %q", err, c.want)
+			}
+		})
+	}
+}

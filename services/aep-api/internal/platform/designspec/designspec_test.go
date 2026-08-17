@@ -141,3 +141,23 @@ func TestNeedsSpecNoLongerKnown(t *testing.T) {
 	dep := `{"kind":"external","name":"stripe","needsSpec":true}`
 	wantCode(t, ValidateComponentDesign([]byte(designWithDep(dep))), CodeSchemaViolation)
 }
+
+func TestOnboardingFieldsAccepted(t *testing.T) {
+	raw := `{
+  "name": "orders-service",
+  "type": "service",
+  "version": "1.0",
+  "language": "go",
+  "buildpack": "go",
+  "appPath": ".",
+  "entrypoint": "main.go",
+  "exposure": "intranet",
+  "dependencies": [],
+  "description": "Vendored unmodified",
+  "sourceMode": "importAsIs",
+  "source": {"repo": "acme/legacy", "ref": "abc123", "subpath": "."}
+}`
+	if err := ValidateComponentDesign([]byte(raw)); err != nil {
+		t.Fatalf("onboarding fields rejected: %v", err)
+	}
+}

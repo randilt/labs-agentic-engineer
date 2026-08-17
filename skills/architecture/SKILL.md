@@ -137,6 +137,15 @@ named otherwise — `name` is the single source of truth the coding agent copies
 into `workload.yaml` and the managed-API gateway binds to. The port lives in
 `workload.yaml`, not here.
 
+**Onboarding fields** (absent on a platform-generated component — absence, not a
+default value):
+
+| Field | When present | Allowed values / shape | Relationship |
+|---|---|---|---|
+| `sourceMode` | the component's code already exists | `"importAsIs"` (vendored unmodified) or `"modernize"` (rebuilt through the pipeline) | required whenever `source` is present |
+| `source` | `sourceMode` is set | `{ "repo", "ref", "subpath" }` — all non-empty strings; the foreign repo, the commit/ref taken, the subpath the component lives under | required whenever `sourceMode` is set; authored once, never platform-recomputed |
+| `modernizes` | `sourceMode` is `"modernize"` | the kebab-case name of the sibling this component replaces | must name an `importAsIs` sibling, never itself, never a sibling another modernize component already claims. When a component is flagged for modernization, emit TWO design components: the `importAsIs` original and the `modernize` one pointing at it. |
+
 **Platform-owned fields you never author**, in two kinds:
 
 - **Preserved verbatim** where the platform has already written them:

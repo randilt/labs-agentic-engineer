@@ -77,7 +77,10 @@ var (
 		"exposure": true, "dependencies": true, "description": true,
 		"endpoint": true, "exposesAPI": true, "componentAgentInstructions": true,
 		"skillsPinned": true, "stories": true,
+		"sourceMode": true, "source": true, "modernizes": true,
 	}
+	sourceModeValues = map[string]bool{"importAsIs": true, "modernize": true}
+	sourceKnownKeys  = map[string]bool{"repo": true, "ref": true, "subpath": true}
 )
 
 // validateComponentDesign mirrors the zod componentDesignSchema.safeParse
@@ -145,6 +148,9 @@ func validateComponentDesign(content, dirName string) *designProblem {
 			return p
 		}
 	}
+	if p := validateOnboardingFields(obj); p != nil {
+		return p
+	}
 	if name := obj["name"].(string); name != dirName {
 		return &designProblem{
 			code:    ErrSchemaViolation,
@@ -173,6 +179,78 @@ func validateEndpoint(v any) *designProblem {
 	name, ok := ep["name"].(string)
 	if !ok || name == "" {
 		return &designProblem{code: ErrSchemaViolation, message: "endpoint.name: must be at least 1 characters"}
+	}
+	return nil
+}
+
+// validateOnboardingFields mirrors the zod superRefine on sourceMode / source /
+// modernizes. Relationships between the three do NOT serialize to JSON Schema
+// (same as the web-application alias rule); this fold gate and the zod gate
+// share them so a write that passes one always folds here.
+func validateOnboardingFields(obj map[string]any) *designProblem {
+	modeRaw, hasMode := obj["sourceMode"]
+	sourceRaw, hasSource := obj["source"]
+	_, hasModernizes := obj["modernizes"]
+	modernizesRaw := obj["modernizes"]
+
+	var mode string
+	if hasMode {
+		s, ok := modeRaw.(string)
+		if !ok || !sourceModeValues[s] {
+			return &designProblem{code: ErrSchemaViolation, message: fmt.Sprintf("sourceMode: %q is not an allowed value", modeRaw)}
+		}
+		mode = s
+	}
+	if hasSource {
+		if p := validateSource(sourceRaw); p != nil {
+			return p
+		}
+	}
+	if hasMode && !hasSource {
+		return &designProblem{code: ErrSchemaViolation, message: fmt.Sprintf("source is required when sourceMode is %q — record repo, ref, and subpath", mode)}
+	}
+	if hasSource && !hasMode {
+		return &designProblem{code: ErrSchemaViolation, message: `sourceMode is required when source is present — must be "importAsIs" or "modernize"`}
+	}
+	var modernizes string
+	if hasModernizes {
+		s, ok := modernizesRaw.(string)
+		if !ok || s == "" {
+			return &designProblem{code: ErrSchemaViolation, message: "modernizes: must be at least 1 characters"}
+		}
+		modernizes = s
+		if mode != "modernize" {
+			got := "(absent)"
+			if hasMode {
+				got = mode
+			}
+			return &designProblem{code: ErrSchemaViolation, message: fmt.Sprintf("modernizes is only valid when sourceMode is \"modernize\", got %q", got)}
+		}
+		if name, _ := obj["name"].(string); modernizes == name {
+			return &designProblem{code: ErrSchemaViolation, message: "modernizes must name a sibling importAsIs component, not itself"}
+		}
+	}
+	if mode == "modernize" && !hasModernizes {
+		return &designProblem{code: ErrSchemaViolation, message: `modernizes is required when sourceMode is "modernize" — name the importAsIs sibling this component replaces`}
+	}
+	return nil
+}
+
+func validateSource(raw any) *designProblem {
+	src, ok := raw.(map[string]any)
+	if !ok {
+		return &designProblem{code: ErrSchemaViolation, message: "source: must be an object"}
+	}
+	for k := range src {
+		if !sourceKnownKeys[k] {
+			return &designProblem{code: ErrSchemaViolation, message: "source: unknown property " + k}
+		}
+	}
+	for _, field := range []string{"repo", "ref", "subpath"} {
+		s, ok := src[field].(string)
+		if !ok || s == "" {
+			return &designProblem{code: ErrSchemaViolation, message: "source." + field + ": must be at least 1 characters"}
+		}
 	}
 	return nil
 }

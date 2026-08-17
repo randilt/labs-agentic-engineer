@@ -277,6 +277,40 @@
       "items": {
         "type": "string"
       }
+    },
+    "sourceMode": {
+      "type": "string",
+      "enum": [
+        "importAsIs",
+        "modernize"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "repo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subpath": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "repo",
+        "ref",
+        "subpath"
+      ],
+      "additionalProperties": false
+    },
+    "modernizes": {
+      "type": "string",
+      "minLength": 1
     }
   },
   "required": [

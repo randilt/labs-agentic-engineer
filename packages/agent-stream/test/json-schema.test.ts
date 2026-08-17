@@ -73,4 +73,8 @@ test("the schema is a strict object exposing the ComponentDesign fields", () => 
     assert.ok(schema.properties && key in schema.properties, `missing property ${key}`);
     assert.ok(schema.required?.includes(key), `expected ${key} required`);
   }
+  for (const key of ["sourceMode", "source", "modernizes"]) {
+    assert.ok(schema.properties && key in schema.properties, `missing optional property ${key}`);
+    assert.ok(!schema.required?.includes(key), `expected ${key} optional (absent = platform-generated)`);
+  }
 });

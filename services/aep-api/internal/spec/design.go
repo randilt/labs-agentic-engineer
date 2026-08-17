@@ -74,6 +74,44 @@ type DesignComponent struct {
 	// service components). Default false ⇒ auto-RCA on. Sourced from the
 	// design.json `disableAutoRca` key. See ResolveAutoRCAEnabled.
 	DisableAutoRca bool `json:"disableAutoRca,omitempty"`
+	// SourceMode is the onboarding source mode. Empty means platform-generated
+	// (today's only behaviour — absence, not a default value). "importAsIs"
+	// vendors unmodified code; "modernize" rebuilds through the normal pipeline
+	// against a paired importAsIs sibling. Sourced from design.json `sourceMode`.
+	SourceMode string `json:"sourceMode,omitempty"`
+	// Source records where an onboarded component's code came from. Required
+	// whenever SourceMode is set. Authored once by the onboard skill; never
+	// platform-recomputed the way Wiring is.
+	Source *ComponentSource `json:"source,omitempty"`
+	// Modernizes names the importAsIs sibling this modernize component replaces.
+	// Present only when SourceMode is "modernize".
+	Modernizes string `json:"modernizes,omitempty"`
+}
+
+// SourceMode values. Empty (absent on disk) is platform-generated.
+const (
+	SourceModeImportAsIs = "importAsIs"
+	SourceModeModernize  = "modernize"
+)
+
+// ComponentSource is the on-disk `source` block: where an onboarded
+// component's code came from. Flat strings only — the designspec JSON-Schema
+// interpreter has no anyOf/conditional support.
+type ComponentSource struct {
+	Repo    string `json:"repo"`
+	Ref     string `json:"ref"`
+	Subpath string `json:"subpath"`
+}
+
+// IsImportAsIs reports whether this component's code is vendored unmodified.
+func (c DesignComponent) IsImportAsIs() bool {
+	return c.SourceMode == SourceModeImportAsIs
+}
+
+// IsModernize reports whether this component is being rebuilt against a
+// paired importAsIs sibling.
+func (c DesignComponent) IsModernize() bool {
+	return c.SourceMode == SourceModeModernize
 }
 
 // DefaultEndpointName is the conventional workload endpoint name the platform's

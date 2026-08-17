@@ -399,3 +399,40 @@ func TestDesignGate_SkillsPinned_And_LegacyAccepted(t *testing.T) {
 		})
 	}
 }
+
+func TestDesignGate_OnboardingFields(t *testing.T) {
+	source := `{"repo":"acme/legacy","ref":"abc123","subpath":"."}`
+	ok := func(extra string) string {
+		return fmt.Sprintf(`{"name":"svc","type":"service","version":"0.1.0",`+
+			`"language":"Go","buildpack":"docker","appPath":"svc",`+
+			`"entrypoint":"deployment/service","exposure":"internet",`+
+			`"description":"x","dependencies":[]%s}`, extra)
+	}
+	cases := []struct {
+		name   string
+		extra  string
+		wantOK bool
+	}{
+		{"absent — platform-generated", "", true},
+		{"importAsIs with source", `,"sourceMode":"importAsIs","source":` + source, true},
+		{"modernize with pair", `,"sourceMode":"modernize","source":` + source + `,"modernizes":"legacy-svc"`, true},
+		{"sourceMode without source", `,"sourceMode":"importAsIs"`, false},
+		{"source without sourceMode", `,"source":` + source, false},
+		{"modernize without modernizes", `,"sourceMode":"modernize","source":` + source, false},
+		{"modernizes names itself", `,"sourceMode":"modernize","source":` + source + `,"modernizes":"svc"`, false},
+		{"modernizes on importAsIs", `,"sourceMode":"importAsIs","source":` + source + `,"modernizes":"legacy-svc"`, false},
+		{"unknown sourceMode", `,"sourceMode":"generated","source":` + source, false},
+		{"source missing subpath", `,"sourceMode":"importAsIs","source":{"repo":"acme/legacy","ref":"abc123"}`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := validateComponentDesign(ok(c.extra), "svc")
+			if c.wantOK && p != nil {
+				t.Fatalf("want accepted, got: %s", p.message)
+			}
+			if !c.wantOK && p == nil {
+				t.Fatalf("want rejected, got accepted")
+			}
+		})
+	}
+}

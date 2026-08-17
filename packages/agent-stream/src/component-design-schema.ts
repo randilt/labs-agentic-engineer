@@ -188,6 +188,12 @@ const exposesAPISchema = z.strictObject({
   orgPublished: z.boolean().optional(),
 });
 
+const componentSourceSchema = z.strictObject({
+  repo: z.string().min(1),
+  ref: z.string().min(1),
+  subpath: z.string().min(1),
+});
+
 export const componentDesignSchema = z.strictObject({
   name: z.string().min(1),
   type: componentTypeSchema,
@@ -211,6 +217,53 @@ export const componentDesignSchema = z.strictObject({
   // be claimed by some component's list before a version can be cut.
   stories: z.array(z.number().int().positive()).optional(),
   skillsPinned: z.array(z.string()).optional(),
+  // Onboarding: absent = platform-generated. Relationships between these three
+  // (source required with sourceMode, modernizes only on modernize, never
+  // self) are superRefine below — they do NOT serialize to JSON Schema, same
+  // as the web-application alias rule. The Go fold gate mirrors them.
+  sourceMode: z.enum(["importAsIs", "modernize"]).optional(),
+  source: componentSourceSchema.optional(),
+  modernizes: z.string().min(1).optional(),
+}).superRefine((doc, ctx) => {
+  const hasMode = doc.sourceMode !== undefined;
+  const hasSource = doc.source !== undefined;
+  if (hasMode && !hasSource) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["source"],
+      message: `source is required when sourceMode is ${JSON.stringify(doc.sourceMode)} — record repo, ref, and subpath`,
+    });
+  }
+  if (hasSource && !hasMode) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["sourceMode"],
+      message: 'sourceMode is required when source is present — must be "importAsIs" or "modernize"',
+    });
+  }
+  if (doc.modernizes !== undefined) {
+    if (doc.sourceMode !== "modernize") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["modernizes"],
+        message: `modernizes is only valid when sourceMode is "modernize", got ${JSON.stringify(doc.sourceMode ?? "(absent)")}`,
+      });
+    }
+    if (doc.modernizes === doc.name) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["modernizes"],
+        message: "modernizes must name a sibling importAsIs component, not itself",
+      });
+    }
+  }
+  if (doc.sourceMode === "modernize" && doc.modernizes === undefined) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["modernizes"],
+      message: 'modernizes is required when sourceMode is "modernize" — name the importAsIs sibling this component replaces',
+    });
+  }
 });
 
 // Compile-time drift guard: schema ⇄ contracts wire type (cf. tool.ts).

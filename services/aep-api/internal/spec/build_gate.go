@@ -53,6 +53,7 @@ const (
 	codeUncoveredStory           = "UNCOVERED_STORY"
 	codeUnenrichedComponent      = "UNENRICHED_COMPONENT"
 	codeMissingComponentArtifact = "MISSING_COMPONENT_ARTIFACT"
+	codeInvalidOnboardingPair    = "INVALID_ONBOARDING_PAIR"
 )
 
 const designCellFile = "design.cell"
@@ -105,15 +106,25 @@ func validateBuildGate(reqFiles, designFiles map[string]string) []FileValidation
 		}
 	}
 
-	// Per-component completeness for deployable components.
+	// Per-component completeness for deployable components. An importAsIs
+	// component skips the scaffold/language/artifact bar (vendored code
+	// brings its own) but still needs a valid source pointer. A modernize
+	// component is gated like any generated one, plus the modernizes
+	// back-reference must name a unique importAsIs sibling.
+	onboarded := collectOnboarding(facts, designFiles)
+	claimedBy := map[string][]string{} // legacy name → modernize names pointing at it
+	for name, doc := range onboarded {
+		if doc.SourceMode == SourceModeModernize && doc.Modernizes != "" {
+			claimedBy[doc.Modernizes] = append(claimedBy[doc.Modernizes], name)
+		}
+	}
 	for _, c := range facts.Components {
 		componentType, deployable := deployableCellTypes[strings.ToLower(strings.TrimSpace(c.Type))]
 		if !deployable {
 			continue
 		}
 		designPath := "components/" + c.ID + "/design.json"
-		content, ok := designFiles[designPath]
-		if !ok {
+		if _, ok := designFiles[designPath]; !ok {
 			errs = append(errs, FileValidationError{
 				Path: designPath, Code: codeMissingComponentArtifact,
 				Message: fmt.Sprintf("component %q has no design.json — save the design so the scaffold lands, then enrich it", c.ID),
@@ -124,11 +135,19 @@ func validateBuildGate(reqFiles, designFiles map[string]string) []FileValidation
 		// agent wrote it, so any whitespace/escaping variant must still read
 		// as the same field values. Malformed JSON never reaches here — the
 		// layout gates run first and own rejecting it.
-		var doc struct {
-			Language    string `json:"language"`
-			Description string `json:"description"`
+		doc := onboarded[c.ID]
+		if doc.SourceMode == SourceModeImportAsIs {
+			if !validSourcePointer(doc) {
+				errs = append(errs, FileValidationError{
+					Path: designPath, Code: codeInvalidOnboardingPair,
+					Message: fmt.Sprintf("component %q has sourceMode %q but no valid source — record repo, ref, and subpath", c.ID, SourceModeImportAsIs),
+				})
+			}
+			continue
 		}
-		_ = json.Unmarshal([]byte(content), &doc)
+		if doc.SourceMode == SourceModeModernize {
+			errs = append(errs, validateModernizes(designPath, c.ID, doc, onboarded, claimedBy)...)
+		}
 		if strings.Contains(doc.Description, scaffoldPlaceholderMarker) {
 			errs = append(errs, FileValidationError{
 				Path: designPath, Code: codeUnenrichedComponent,
@@ -158,6 +177,78 @@ func validateBuildGate(reqFiles, designFiles map[string]string) []FileValidation
 		}
 	}
 	return errs
+}
+
+// componentOnboarding is the subset of design.json the build gate reads for
+// onboarding + enrichment. Malformed JSON never reaches here.
+type componentOnboarding struct {
+	Language    string `json:"language"`
+	Description string `json:"description"`
+	SourceMode  string `json:"sourceMode"`
+	Source      *struct {
+		Repo    string `json:"repo"`
+		Ref     string `json:"ref"`
+		Subpath string `json:"subpath"`
+	} `json:"source"`
+	Modernizes string `json:"modernizes"`
+}
+
+func collectOnboarding(facts *CellFacts, designFiles map[string]string) map[string]componentOnboarding {
+	out := map[string]componentOnboarding{}
+	for _, c := range facts.Components {
+		var doc componentOnboarding
+		_ = json.Unmarshal([]byte(designFiles["components/"+c.ID+"/design.json"]), &doc)
+		out[c.ID] = doc
+	}
+	return out
+}
+
+func validSourcePointer(doc componentOnboarding) bool {
+	return doc.Source != nil &&
+		strings.TrimSpace(doc.Source.Repo) != "" &&
+		strings.TrimSpace(doc.Source.Ref) != "" &&
+		strings.TrimSpace(doc.Source.Subpath) != ""
+}
+
+func validateModernizes(designPath, id string, doc componentOnboarding, onboarded map[string]componentOnboarding, claimedBy map[string][]string) []FileValidationError {
+	if doc.Modernizes == "" {
+		return []FileValidationError{{
+			Path: designPath, Code: codeInvalidOnboardingPair,
+			Message: fmt.Sprintf("component %q has sourceMode %q but no modernizes — name the importAsIs sibling this component replaces", id, SourceModeModernize),
+		}}
+	}
+	if doc.Modernizes == id {
+		return []FileValidationError{{
+			Path: designPath, Code: codeInvalidOnboardingPair,
+			Message: fmt.Sprintf("components/%s/design.json: modernizes must name a sibling importAsIs component, not itself", id),
+		}}
+	}
+	sibling, ok := onboarded[doc.Modernizes]
+	if !ok {
+		return []FileValidationError{{
+			Path: designPath, Code: codeInvalidOnboardingPair,
+			Message: fmt.Sprintf("components/%s/design.json: modernizes %q does not name a sibling in this design — every modernize component must point at an importAsIs sibling", id, doc.Modernizes),
+		}}
+	}
+	if sibling.SourceMode != SourceModeImportAsIs {
+		return []FileValidationError{{
+			Path: designPath, Code: codeInvalidOnboardingPair,
+			Message: fmt.Sprintf("components/%s/design.json: modernizes %q must name an importAsIs sibling, got sourceMode %q", id, doc.Modernizes, sibling.SourceMode),
+		}}
+	}
+	if names := claimedBy[doc.Modernizes]; len(names) > 1 {
+		return []FileValidationError{{
+			Path: designPath, Code: codeInvalidOnboardingPair,
+			Message: fmt.Sprintf("components/%s/design.json: modernizes %q is already claimed by another modernize component — a legacy component may have only one modernize sibling", id, doc.Modernizes),
+		}}
+	}
+	if !validSourcePointer(doc) {
+		return []FileValidationError{{
+			Path: designPath, Code: codeInvalidOnboardingPair,
+			Message: fmt.Sprintf("component %q has sourceMode %q but no valid source — record repo, ref, and subpath", id, SourceModeModernize),
+		}}
+	}
+	return nil
 }
 
 // componentStoryClaims maps each cell component to the stories its design.json

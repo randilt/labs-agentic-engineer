@@ -222,3 +222,67 @@ func TestDesignJSONStories(t *testing.T) {
 		}
 	}
 }
+
+func importAsIs(id, typ, stories string) string {
+	return `{"name":"` + id + `","type":"` + typ + `","version":"0.1.0","language":"TBD","buildpack":"docker","appPath":"` + id + `","entrypoint":"deployment/` + typ + `","exposure":"intranet","stories":[` + stories + `],"dependencies":[],"description":"vendored unmodified","sourceMode":"importAsIs","source":{"repo":"acme/legacy","ref":"abc123","subpath":"."}}`
+}
+
+func modernizePair(id, typ, stories, legacy string) string {
+	return `{"name":"` + id + `","type":"` + typ + `","version":"0.1.0","language":"Ballerina","buildpack":"docker","appPath":"` + id + `","entrypoint":"deployment/` + typ + `","exposure":"intranet","stories":[` + stories + `],"dependencies":[],"description":"rebuild","sourceMode":"modernize","source":{"repo":"acme/legacy","ref":"abc123","subpath":"."},"modernizes":"` + legacy + `"}`
+}
+
+func TestBuildGate_ImportAsIsPassesWithoutArtifacts(t *testing.T) {
+	files := completeDesignFiles()
+	files["components/lunch-api/design.json"] = importAsIs("lunch-api", "service", "1, 2, 4")
+	delete(files, "components/lunch-api/openapi.yaml")
+	errs := gateErrors(t, files)
+	if len(errs) != 0 {
+		t.Fatalf("importAsIs should pass without openapi.yaml, got %+v", errs)
+	}
+}
+
+func TestBuildGate_ImportAsIsStillNeedsStoryCoverage(t *testing.T) {
+	files := completeDesignFiles()
+	files["components/lunch-api/design.json"] = importAsIs("lunch-api", "service", "")
+	errs := gateErrors(t, files)
+	found := false
+	for _, e := range errs {
+		if e.Code == "UNCOVERED_STORY" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want UNCOVERED_STORY when importAsIs claims none, got %+v", errs)
+	}
+}
+
+func TestBuildGate_ModernizeBackReferenceEnforced(t *testing.T) {
+	files := completeDesignFiles()
+	files["design.cell"] = gateCell + "component lunch-api-next service\n"
+	files["components/lunch-api/design.json"] = importAsIs("lunch-api", "service", "1, 2, 4")
+	files["components/lunch-api-next/design.json"] = modernizePair("lunch-api-next", "service", "1, 2, 4", "no-such-component")
+	files["components/lunch-api-next/openapi.yaml"] = "openapi: 3.0.3\n"
+	errs := gateErrors(t, files)
+	found := false
+	for _, e := range errs {
+		if e.Code == "INVALID_ONBOARDING_PAIR" && strings.Contains(e.Message, "no-such-component") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want INVALID_ONBOARDING_PAIR for dangling modernizes, got %+v", errs)
+	}
+}
+
+func TestBuildGate_ModernizePairPasses(t *testing.T) {
+	files := completeDesignFiles()
+	files["design.cell"] = gateCell + "component lunch-api-next service\n"
+	files["components/lunch-api/design.json"] = importAsIs("lunch-api", "service", "1, 2, 4")
+	delete(files, "components/lunch-api/openapi.yaml")
+	files["components/lunch-api-next/design.json"] = modernizePair("lunch-api-next", "service", "1, 2, 4", "lunch-api")
+	files["components/lunch-api-next/openapi.yaml"] = "openapi: 3.0.3\n"
+	errs := gateErrors(t, files)
+	if len(errs) != 0 {
+		t.Fatalf("valid modernize pair should pass, got %+v", errs)
+	}
+}

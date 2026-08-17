@@ -175,3 +175,69 @@ for (const [name, wiring] of [
     assert.equal(problem?.code, "SCHEMA_VIOLATION");
   });
 }
+
+const SOURCE = { repo: "acme/legacy", ref: "abc123", subpath: "." };
+
+test("accepts an absent sourceMode (platform-generated)", () => {
+  assert.equal(checkComponentDesign(PATH, design()), null);
+});
+
+test("accepts importAsIs with a source pointer", () => {
+  assert.equal(checkComponentDesign(PATH, design({ sourceMode: "importAsIs", source: SOURCE })), null);
+});
+
+test("accepts modernize with source and modernizes", () => {
+  assert.equal(
+    checkComponentDesign(PATH, design({ sourceMode: "modernize", source: SOURCE, modernizes: "legacy-web" })),
+    null,
+  );
+});
+
+test("rejects sourceMode without source", () => {
+  const problem = checkComponentDesign(PATH, design({ sourceMode: "importAsIs" }));
+  assert.equal(problem?.code, "SCHEMA_VIOLATION");
+  assert.match(problem!.message, /source/);
+});
+
+test("rejects source without sourceMode", () => {
+  const problem = checkComponentDesign(PATH, design({ source: SOURCE }));
+  assert.equal(problem?.code, "SCHEMA_VIOLATION");
+  assert.match(problem!.message, /sourceMode/);
+});
+
+test("rejects modernize without modernizes", () => {
+  const problem = checkComponentDesign(PATH, design({ sourceMode: "modernize", source: SOURCE }));
+  assert.equal(problem?.code, "SCHEMA_VIOLATION");
+  assert.match(problem!.message, /modernizes/);
+});
+
+test("rejects modernizes naming itself", () => {
+  const problem = checkComponentDesign(
+    PATH,
+    design({ sourceMode: "modernize", source: SOURCE, modernizes: "web" }),
+  );
+  assert.equal(problem?.code, "SCHEMA_VIOLATION");
+  assert.match(problem!.message, /not itself/);
+});
+
+test("rejects modernizes on importAsIs", () => {
+  const problem = checkComponentDesign(
+    PATH,
+    design({ sourceMode: "importAsIs", source: SOURCE, modernizes: "legacy-web" }),
+  );
+  assert.equal(problem?.code, "SCHEMA_VIOLATION");
+  assert.match(problem!.message, /modernizes/);
+});
+
+test("rejects unknown sourceMode", () => {
+  const problem = checkComponentDesign(PATH, design({ sourceMode: "generated", source: SOURCE }));
+  assert.equal(problem?.code, "SCHEMA_VIOLATION");
+});
+
+test("rejects a source block missing subpath", () => {
+  const problem = checkComponentDesign(
+    PATH,
+    design({ sourceMode: "importAsIs", source: { repo: "acme/legacy", ref: "abc123" } }),
+  );
+  assert.equal(problem?.code, "SCHEMA_VIOLATION");
+});

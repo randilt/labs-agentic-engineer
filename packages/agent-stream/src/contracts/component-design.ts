@@ -97,6 +97,39 @@ export interface ComponentDesign {
    *  enrichment (#369); the build gate's coverage check reads it. */
   stories?: number[];
   skillsPinned?: string[];
+  /**
+   * Onboarding source mode. ABSENT means platform-generated (today's only
+   * behaviour — absence, not a default value, so every existing design.json
+   * stays valid). `"importAsIs"` vendors unmodified code; `"modernize"`
+   * rebuilds through the normal pipeline against a paired importAsIs sibling.
+   */
+  sourceMode?: SourceMode;
+  /**
+   * Where an onboarded component's code came from. Required whenever
+   * `sourceMode` is present. Authored once by the onboard skill; never
+   * platform-recomputed the way `wiring` is.
+   */
+  source?: ComponentSource;
+  /**
+   * Only on a `modernize` component: the importAsIs sibling this component
+   * replaces. Must name a different component; sibling existence and
+   * uniqueness are enforced at build-gate time (the per-file write-gate
+   * cannot see the rest of the design).
+   */
+  modernizes?: string;
+}
+
+/** Closed set of onboarding source modes. Absent on a platform-generated component. */
+export type SourceMode = "importAsIs" | "modernize";
+
+/** Pointer to the foreign repo a component was vendored from. Flat strings only. */
+export interface ComponentSource {
+  /** Source repository (owner/name or clone URL). */
+  repo: string;
+  /** Git ref or commit the code was taken at. */
+  ref: string;
+  /** Subpath within that repo the component's code lives under. */
+  subpath: string;
 }
 
 /**

@@ -54,6 +54,9 @@ import (
 //	exposesAPI                 ↔ ExposesAPI     (platform-owned; {managed, auth, userContext, orgPublished})
 //	componentAgentInstructions ↔ ComponentAgentInstructions (platform-owned; optional)
 //	skillsPinned              ↔ SkillsPinned  (optional; skill names applied to this component)
+//	sourceMode                 ↔ SourceMode    (optional; "importAsIs" | "modernize"; absent = platform-generated)
+//	source                     ↔ Source        (optional; {repo, ref, subpath}; required when sourceMode is set)
+//	modernizes                 ↔ Modernizes    (optional; sibling name; only on sourceMode=modernize)
 //
 // OpenAPISpec is NOT a design.json key: it stays in the sibling
 // `components/<name>/openapi.yaml` file, assembled/split separately.
@@ -89,7 +92,18 @@ type componentDesignJSON struct {
 	// Platform-owned blocks (absent = zero value).
 	ExposesAPI                 *exposesAPIJSON `json:"exposesAPI,omitempty"`
 	ComponentAgentInstructions string          `json:"componentAgentInstructions,omitempty"`
-	SkillsPinned              []string        `json:"skillsPinned,omitempty"`
+	SkillsPinned               []string        `json:"skillsPinned,omitempty"`
+	SourceMode                 string          `json:"sourceMode,omitempty"`
+	Source                     *sourceJSON     `json:"source,omitempty"`
+	Modernizes                 string          `json:"modernizes,omitempty"`
+}
+
+// sourceJSON is the on-disk shape of the optional `source` block — where an
+// onboarded component's code came from. Flat strings only.
+type sourceJSON struct {
+	Repo    string `json:"repo"`
+	Ref     string `json:"ref"`
+	Subpath string `json:"subpath"`
 }
 
 // endpointJSON is the on-disk shape of the optional `endpoint` block. Only the
@@ -200,6 +214,9 @@ func parseComponentDesignJSON(dir, raw string) (DesignComponent, error) {
 	if err := validateExposure(dir, dj.Exposure); err != nil {
 		return DesignComponent{}, err
 	}
+	if err := validateSourceMode(dir, dj.SourceMode, dj.Source, dj.Modernizes, dj.Name); err != nil {
+		return DesignComponent{}, err
+	}
 
 	deps, err := assembleDependencies(dir, dj.Dependencies)
 	if err != nil {
@@ -221,7 +238,10 @@ func parseComponentDesignJSON(dir, raw string) (DesignComponent, error) {
 		Endpoint:                   toModelEndpoint(dj.Endpoint),
 		ComponentAgentInstructions: dj.ComponentAgentInstructions,
 		ExposesAPI:                 toModelExposesAPI(dj.ExposesAPI),
-		SkillsPinned:              append([]string(nil), dj.SkillsPinned...),
+		SkillsPinned:               append([]string(nil), dj.SkillsPinned...),
+		SourceMode:                 dj.SourceMode,
+		Source:                     toModelSource(dj.Source),
+		Modernizes:                 dj.Modernizes,
 	}, nil
 }
 
@@ -249,6 +269,59 @@ func validateExposure(dir, exposure string) error {
 		return nil
 	}
 	return fmt.Errorf("components/%s/design.json: exposure %q is invalid — must be %q, %q, or omitted", dir, exposure, "internet", "intranet")
+}
+
+const validSourceModes = "importAsIs | modernize"
+
+// validateSourceMode enforces the onboarding triad on read: sourceMode is
+// absent (platform-generated) or one of the two values; source is required
+// iff sourceMode is set; modernizes is required iff sourceMode is modernize
+// and must not name this component. Sibling existence/uniqueness is a
+// bundle-level check (build_gate.go) — this codec sees one file.
+func validateSourceMode(dir, mode string, source *sourceJSON, modernizes, name string) error {
+	path := "components/" + dir + "/design.json"
+	switch mode {
+	case "":
+		if source != nil {
+			return fmt.Errorf("%s: sourceMode is required when source is present — must be %s", path, validSourceModes)
+		}
+		if modernizes != "" {
+			return fmt.Errorf("%s: modernizes is only valid when sourceMode is %q, got %q", path, SourceModeModernize, "(absent)")
+		}
+		return nil
+	case SourceModeImportAsIs, SourceModeModernize:
+		// ok
+	default:
+		return fmt.Errorf("%s: sourceMode %q is invalid — must be %s, or omitted", path, mode, validSourceModes)
+	}
+	if source == nil || source.Repo == "" || source.Ref == "" || source.Subpath == "" {
+		return fmt.Errorf("%s: source is required when sourceMode is %q — record repo, ref, and subpath", path, mode)
+	}
+	if mode == SourceModeModernize {
+		if modernizes == "" {
+			return fmt.Errorf("%s: modernizes is required when sourceMode is %q — name the importAsIs sibling this component replaces", path, SourceModeModernize)
+		}
+		if modernizes == name {
+			return fmt.Errorf("%s: modernizes must name a sibling importAsIs component, not itself", path)
+		}
+	} else if modernizes != "" {
+		return fmt.Errorf("%s: modernizes is only valid when sourceMode is %q, got %q", path, SourceModeModernize, mode)
+	}
+	return nil
+}
+
+func toModelSource(in *sourceJSON) *ComponentSource {
+	if in == nil {
+		return nil
+	}
+	return &ComponentSource{Repo: in.Repo, Ref: in.Ref, Subpath: in.Subpath}
+}
+
+func toJSONSource(in *ComponentSource) *sourceJSON {
+	if in == nil {
+		return nil
+	}
+	return &sourceJSON{Repo: in.Repo, Ref: in.Ref, Subpath: in.Subpath}
 }
 
 // assembleDependencies converts the on-disk dependency entries to the unified
@@ -326,7 +399,10 @@ func marshalComponentDesignJSON(dir string, comp DesignComponent) ([]byte, error
 		Dependencies:               toJSONDeps(comp.Dependencies),
 		ExposesAPI:                 toJSONExposesAPI(comp.ExposesAPI),
 		ComponentAgentInstructions: comp.ComponentAgentInstructions,
-		SkillsPinned:              comp.SkillsPinned,
+		SkillsPinned:               comp.SkillsPinned,
+		SourceMode:                 comp.SourceMode,
+		Source:                     toJSONSource(comp.Source),
+		Modernizes:                 comp.Modernizes,
 	}
 
 	var buf bytes.Buffer
