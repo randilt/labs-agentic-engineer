@@ -142,6 +142,10 @@ func (e *CodingExecutor) launchAnalysisAgent(ctx context.Context, in agentLaunch
 	if err != nil {
 		return "", fmt.Errorf("mint MCP token: %w", err)
 	}
+	// The org PAT (githubSR) authenticates the foreign clone the same way a
+	// coding Job clones the project repo. StageSourceSecret provisions an
+	// OpenChoreo GitSecret for build WorkflowRuns; this Job is a coding-agent
+	// pod and already mounts GITHUB_TOKEN via SecretEnvRef.
 	anthropicSR, githubSR, err := e.resolveRunnerSecretRefs(ctx, in.orgID)
 	if err != nil {
 		return "", err

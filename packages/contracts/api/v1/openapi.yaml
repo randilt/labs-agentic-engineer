@@ -709,6 +709,34 @@ paths:
       tags:
       - Projects
   /projects/{projectName}/onboarding:
+    get:
+      operationId: get-onboarding-analysis
+      summary: Latest onboarding analysis execution for this project
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingAnalysisStatus'
+          description: Latest analysis execution, or idle when none has run
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Error
+      security:
+      - userJWT: []
+      tags:
+      - Spec
     post:
       operationId: start-onboarding-analysis
       summary: Start reverse-engineering a foreign source repo into onboarding facts
@@ -2917,6 +2945,29 @@ components:
           type: string
       required:
       - executionId
+      type: object
+    OnboardingAnalysisStatus:
+      additionalProperties: false
+      description: Latest analysis execution for a project. idle means none has run.
+      properties:
+        status:
+          description: Execution lifecycle, or idle when this project has never analyzed
+          enum:
+          - idle
+          - queued
+          - running
+          - succeeded
+          - failed
+          - canceled
+          type: string
+          x-go-type: string
+        executionId:
+          type: string
+        reason:
+          description: Failure or gating reason when status is failed
+          type: string
+      required:
+      - status
       type: object
     BuildRequest:
       additionalProperties: false

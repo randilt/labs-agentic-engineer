@@ -88,6 +88,12 @@ export interface ProvisionRequest {
   // execution id, §9.2). Falls back to a path-scoped URL built from
   // gitServiceUrl below when unset. Only used when GITHUB_TOKEN/GH_TOKEN is unset.
   refreshUrl?: string;
+  /**
+   * Optional git ref to check out after clone (AEP_SOURCE_REF). Analysis pins
+   * owner/name@ref this way; implementation/validation leave it empty and stay
+   * on the remote default branch.
+   */
+  sourceRef?: string;
 }
 
 // computeLayout names every path the dispatch flow touches. Pure function
@@ -126,6 +132,23 @@ async function installCommitIdentity(
 ): Promise<void> {
   await execAsync(`git -C ${shellQuote(workspace)} config user.name ${shellQuote(identity.name)}`);
   await execAsync(`git -C ${shellQuote(workspace)} config user.email ${shellQuote(identity.email)}`);
+}
+
+/**
+ * Pin the cloned tree to `ref` (branch, tag, or SHA). Tries a local checkout
+ * first (default-branch history is already present); on miss, fetches that
+ * ref from origin and detaches at FETCH_HEAD.
+ */
+export async function checkoutSourceRef(workspace: string, ref: string): Promise<void> {
+  const git = `git -C ${shellQuote(workspace)}`;
+  try {
+    await execAsync(`${git} checkout --detach ${shellQuote(ref)}`);
+    return;
+  } catch {
+    // ref is not in the clone yet (other branch / tag / dangling SHA)
+  }
+  await execAsync(`${git} fetch --depth 1 origin ${shellQuote(ref)}`);
+  await execAsync(`${git} checkout --detach FETCH_HEAD`);
 }
 
 async function installScopedCredentialHelper(workspace: string, scope: string, helper: string): Promise<void> {
@@ -213,6 +236,10 @@ export async function provisionWorkspace(req: ProvisionRequest): Promise<Workspa
     );
 
     await installCommitIdentity(layout.workspace, req.identity);
+
+    if (req.sourceRef && req.sourceRef.trim() !== "") {
+      await checkoutSourceRef(layout.workspace, req.sourceRef.trim());
+    }
 
     const scope = cloneCredentialScope(req.repoUrl);
     if (scope) {

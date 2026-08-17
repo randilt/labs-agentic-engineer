@@ -70,6 +70,11 @@ export interface DispatchRequest {
    */
   taskKind: "implementation" | "validation" | "analysis";
   /**
+   * Optional pin after clone (AEP_SOURCE_REF). Analysis sets this from
+   * owner/name@ref; other kinds leave it unset.
+   */
+  sourceRef?: string;
+  /**
    * Developer diagnostics for this run: the SDK's own debug log, its stderr,
    * and per-token streaming frames for the watchdog. All three land in files
    * beside `claude.log`; none of them reach the progress feed.

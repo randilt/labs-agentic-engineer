@@ -28,6 +28,11 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery/codingagent"
 )
 
+const (
+	reasonExitedWithoutFacts = "analysis pod exited without posting facts"
+	reasonJobGoneBeforeFacts = "analysis job disappeared before facts were posted"
+)
+
 // RuntimePodReader is the narrow OpenChoreo runtime port for pod truth.
 type RuntimePodReader interface {
 	ReleaseBindingName(ctx context.Context, orgName, projectName, componentName, environment string) (string, error)
@@ -44,6 +49,7 @@ type AnalysisWatcher struct {
 	tick      time.Duration
 	startup   time.Duration
 	missing   map[string]int
+	exited    map[string]int
 }
 
 // NewAnalysisWatcher wires the analysis execution watcher.
@@ -59,6 +65,7 @@ func NewAnalysisWatcher(runtime RuntimePodReader, execs ExecutionStore, onFail *
 		tick:      tick,
 		startup:   15 * time.Minute,
 		missing:   map[string]int{},
+		exited:    map[string]int{},
 	}
 }
 
@@ -100,6 +107,11 @@ func (w *AnalysisWatcher) Sweep(ctx context.Context) {
 			delete(w.missing, id)
 		}
 	}
+	for id := range w.exited {
+		if !live[id] {
+			delete(w.exited, id)
+		}
+	}
 }
 
 func (w *AnalysisWatcher) check(ctx context.Context, row *delivery.Execution) {
@@ -131,9 +143,15 @@ func (w *AnalysisWatcher) check(ctx context.Context, row *delivery.Execution) {
 			}
 		}
 	case codingagent.OutcomeSucceeded:
-		// Terminal success is the facts callback — the pod exiting cleanly only
-		// means the agent process ended; analysis.json lands via S2S POST.
+		// Terminal success is the facts callback. A clean pod exit only means
+		// the agent process ended — wait a few ticks for the S2S POST, then
+		// fail so the console is not stuck on "analyzing" forever.
+		w.exited[row.ID]++
+		if w.exited[row.ID] >= 3 && w.onFail != nil {
+			w.onFail.FailExecution(ctx, row.ID, reasonExitedWithoutFacts)
+		}
 	case codingagent.OutcomeRunning:
+		delete(w.exited, row.ID)
 	}
 }
 
@@ -148,6 +166,6 @@ func (w *AnalysisWatcher) noteReadFailure(ctx context.Context, row *delivery.Exe
 		return
 	}
 	if w.onFail != nil {
-		w.onFail.FailExecution(ctx, row.ID, codingagent.ReasonJobNotFound)
+		w.onFail.FailExecution(ctx, row.ID, reasonJobGoneBeforeFacts)
 	}
 }

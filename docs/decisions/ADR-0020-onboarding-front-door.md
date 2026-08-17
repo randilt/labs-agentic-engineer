@@ -42,6 +42,12 @@ console, not a new API.
 ## Consequences
 
 - Analysis facts are committed, not inlined into a turn prompt.
+- Analysis clones the **foreign** source, which has no `.claude/skills/`
+  mirror. The runner copies `codebase-analysis` from the image library
+  (`/app/skills`) into the workspace after clone — the one allowed image-library
+  read on a dispatched run, because ADR-0005's "no image fallback" is about
+  org-edited workflow skills on an AEP project clone. The milestone `aep` skill
+  is not loaded; it would steer the agent toward issues and PRs.
 - `task ⊥ run` stays an import ban; onboard adapters live in `internal/app`.
 - Import means byte-identical vendored code.
 

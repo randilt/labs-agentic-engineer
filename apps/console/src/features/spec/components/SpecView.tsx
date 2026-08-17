@@ -45,6 +45,7 @@ import type { components } from "../../../generated/aep-api";
 import {
   useBuildPreflight,
   useBuildProject,
+  useOnboardingAnalysis,
   useProjectStatus,
   useProjectTags,
 } from "../../projects/api/queries";
@@ -115,6 +116,44 @@ function OnboardModeBanner({
   return null;
 }
 
+function AnalysisStatusBanner({
+  status,
+  reason,
+  isError,
+}: {
+  status?: string;
+  reason?: string;
+  isError?: boolean;
+}) {
+  if (isError) {
+    return (
+      <Alert severity="error" sx={{ borderRadius: 0 }}>
+        <AlertTitle>Could not load analysis status</AlertTitle>
+        Refresh this page to retry. Analysis may still be running on the
+        platform.
+      </Alert>
+    );
+  }
+  if (status === "queued" || status === "running") {
+    return (
+      <Alert severity="info" icon={<CircularProgress size={18} />} sx={{ borderRadius: 0 }}>
+        <AlertTitle>Analyzing source repository</AlertTitle>
+        Reverse-engineering the foreign repo into facts. The design turn starts
+        when analysis.json lands.
+      </Alert>
+    );
+  }
+  if (status === "failed" || status === "canceled") {
+    return (
+      <Alert severity="error" sx={{ borderRadius: 0 }}>
+        <AlertTitle>Analysis failed</AlertTitle>
+        {reason || "The analysis job did not finish. Retry by creating the project again or posting a new onboarding request."}
+      </Alert>
+    );
+  }
+  return null;
+}
+
 // Full-screen spec workspace (#80), per the oxygen-ui sample's
 // LoginEditorView pattern: fullWidth/noPadding page, own header bar,
 // sidebar collapsed while the view is open.
@@ -124,6 +163,7 @@ export function SpecView({ projectName }: { projectName: string }) {
   const status = useProjectStatus(projectName);
   const tags = useProjectTags(projectName);
   const spec = useSpecFiles(projectName);
+  const analysis = useOnboardingAnalysis(projectName);
   // #252 Task 9: every component's read-time dependency status, for the
   // Architecture/design.json cards below (keyed off specKeys.dependencies —
   // the same key Task 5's turn-end freshness invalidation targets).
@@ -234,7 +274,7 @@ export function SpecView({ projectName }: { projectName: string }) {
   // room. In either case the Architecture (cell-diagram) tab is where the user
   // wants to be, so we auto-select it.
   const search = useSearch({ strict: false }) as {
-    generate?: "requirements" | "design";
+    generate?: "requirements" | "design" | "onboard";
     connections?: "open";
   };
   const generate = search.generate;
@@ -245,7 +285,7 @@ export function SpecView({ projectName }: { projectName: string }) {
   // (before design.cell even exists) so the empty/streaming cell is shown.
   // AppLayout strips the param right after auto-sending, so this fires once.
   useEffect(() => {
-    if (generate === "design") setSelection({ kind: "cell-diagram" });
+    if (generate === "design" || generate === "onboard") setSelection({ kind: "cell-diagram" });
   }, [generate]);
 
   // `?connections=open` — the Builds page's gate hold banner deep-links here
@@ -515,6 +555,29 @@ export function SpecView({ projectName }: { projectName: string }) {
   // renders them with kind:"agent"). Building a half-written design is wrong,
   // so Build is disabled — with a tooltip — while one is working (#162).
   const agentBusy = collab.peers.some((p) => p.kind === "agent");
+
+  const analysisStatus = analysis.data?.status;
+  const specRefetch = spec.refetch;
+  const analysisFired = useRef(false);
+  const factsRefetched = useRef(false);
+  // Pull analysis.json into the file tree once facts land. Do not close over
+  // `spec` — that object identity churns every render and would refetch-loop.
+  useEffect(() => {
+    if (analysisStatus !== "succeeded" || factsRefetched.current) return;
+    factsRefetched.current = true;
+    void specRefetch();
+  }, [analysisStatus, specRefetch]);
+  useEffect(() => {
+    if (analysisFired.current) return;
+    if (analysisStatus !== "succeeded") return;
+    if (hasDesignCell || agentBusy) return;
+    analysisFired.current = true;
+    void navigate({
+      to: "/projects/$projectName/spec",
+      params: { projectName },
+      search: { generate: "onboard" },
+    });
+  }, [analysisStatus, hasDesignCell, agentBusy, navigate, projectName]);
 
   // Build (#162, #164): commit the room's live edits FIRST (POST /build tags
   // HEAD), then check preflight — a project with unresolved dependencies
@@ -814,6 +877,12 @@ export function SpecView({ projectName }: { projectName: string }) {
             Ask the agent to continue from where it stopped in the chat panel.
           </Alert>
         )}
+
+        <AnalysisStatusBanner
+          status={analysis.data?.status}
+          reason={analysis.data?.reason}
+          isError={analysis.isError}
+        />
 
         {/* The build gate's refusal, as an actionable checklist (#372): each
             unmet condition with the file it names, and one handoff to the

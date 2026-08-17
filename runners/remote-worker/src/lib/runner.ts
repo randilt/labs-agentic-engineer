@@ -295,7 +295,7 @@ export function alwaysOnSkills(taskKind: DispatchRequest["taskKind"]): string[] 
     return ["aep", "aep-validation"];
   }
   if (taskKind === "analysis") {
-    return ["aep", "codebase-analysis"];
+    return ["codebase-analysis"];
   }
   return ["aep"];
 }

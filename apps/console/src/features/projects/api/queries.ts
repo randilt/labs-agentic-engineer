@@ -340,6 +340,23 @@ export function useStartOnboarding() {
   });
 }
 
+const ANALYSIS_POLL_MS = 3000;
+
+export function useOnboardingAnalysis(projectName: string) {
+  return useProjectResource(
+    projectKeys.onboarding(projectName),
+    () =>
+      client.GET("/projects/{projectName}/onboarding", {
+        params: { path: { projectName } },
+      }),
+    "onboarding analysis",
+    (row) =>
+      row?.status === "queued" || row?.status === "running"
+        ? ANALYSIS_POLL_MS
+        : false,
+  );
+}
+
 // Delete a project (#107). The BFF cascade destroys the OC project and its
 // deployments, ends the run supervisors, and purges the platform's own repo
 // record, executions and run ledger. It does NOT delete the GitHub repository —

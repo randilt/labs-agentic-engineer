@@ -134,6 +134,36 @@ func (s *Service) StartAnalysis(ctx context.Context, orgID, projectID, sourceRep
 	return row.ID, nil
 }
 
+// GetStatus returns the latest analysis execution for the project (issue 0).
+func (s *Service) GetStatus(ctx context.Context, orgID, projectID string) (status, executionID, reason string, err error) {
+	if s.repos == nil {
+		return "", "", "", fmt.Errorf("onboarding: project repo lookup not configured")
+	}
+	repoURL, ok, err := s.repos.GetRepo(ctx, orgID, projectID)
+	if err != nil {
+		return "", "", "", fmt.Errorf("onboarding: lookup project repo: %w", err)
+	}
+	if !ok || repoURL == "" {
+		return "", "", "", ErrProjectNotFound
+	}
+	if s.repoName == nil || s.execs == nil {
+		return "", "", "", fmt.Errorf("onboarding: service not fully configured")
+	}
+	repoFull, err := s.repoName.RepoFullName(ctx, orgID, projectID)
+	if err != nil {
+		return "", "", "", fmt.Errorf("onboarding: resolve repo full name: %w", err)
+	}
+	byKind, err := s.execs.LatestPerKindScoped(ctx, orgID, repoFull, 0)
+	if err != nil {
+		return "", "", "", fmt.Errorf("onboarding: lookup analysis execution: %w", err)
+	}
+	row := byKind[string(taskmeta.KindAnalysis)]
+	if row == nil {
+		return "idle", "", "", nil
+	}
+	return row.Status, row.ID, row.Reason, nil
+}
+
 // ReceiveFacts validates the callback, commits analysis.json, and finishes the row.
 func (s *Service) ReceiveFacts(ctx context.Context, orgID, executionID string, facts json.RawMessage) error {
 	if s.execs == nil || s.files == nil {

@@ -373,6 +373,11 @@ describe("AgentChatPanel — generation CTAs", () => {
     expect(mockSend).toHaveBeenCalledWith("/design");
   });
 
+  it("auto-sends /onboard verbatim after analysis succeeds", () => {
+    renderPanel({ autoGenerate: "onboard" });
+    expect(mockSend).toHaveBeenCalledWith("/onboard");
+  });
+
   it("fires the signal exactly once", () => {
     const { rerender } = renderPanel({ autoGenerate: "requirements" });
     rerender(withProviders(<AgentChatPanel {...panelProps({ autoGenerate: "requirements" })} />));

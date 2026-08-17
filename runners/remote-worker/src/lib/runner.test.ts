@@ -129,6 +129,10 @@ test("alwaysOnSkills: an implementation run is steered by aep, a validation run 
   assert.deepEqual(alwaysOnSkills("validation"), ["aep", "aep-validation"]);
 });
 
+test("alwaysOnSkills: an analysis run is steered by codebase-analysis, not the milestone aep skill", () => {
+  assert.deepEqual(alwaysOnSkills("analysis"), ["codebase-analysis"]);
+});
+
 // playwright-cli carries the browser mechanics a validation run reaches for, and
 // `aep-validation` names it by description. Paying for its body on every turn of
 // every validation run is what NOT listing it here buys.

@@ -601,6 +601,9 @@ func TestRealLibrary_RunnerSkillsAreCodingAudienceAndMirrored(t *testing.T) {
 	if got := byName["playwright-cli"].Audience; len(got) != 1 || got[0] != SkillAudienceCoding {
 		t.Errorf("playwright-cli audience = %v, want exactly [coding]", got)
 	}
+	if got := byName["codebase-analysis"].Audience; len(got) != 1 || got[0] != SkillAudienceCoding {
+		t.Errorf("codebase-analysis audience = %v, want exactly [coding] — analysis pods load it", got)
+	}
 
 	// …and the copy rule admits them with nothing pinned, which is what a real
 	// dispatch looks like before any design has pinned a stack skill.
@@ -619,7 +622,7 @@ func TestRealLibrary_RunnerSkillsAreCodingAudienceAndMirrored(t *testing.T) {
 		enabled = append(enabled, sk)
 	}
 	mirror := desiredMirror(enabled, nil)
-	for _, name := range []string{"aep", "aep-validation", "playwright-cli"} {
+	for _, name := range []string{"aep", "aep-validation", "playwright-cli", "codebase-analysis"} {
 		if _, ok := mirror[claudeSkillsDir+"/"+name+"/SKILL.md"]; !ok {
 			t.Errorf("%s is absent from the mirror — a dispatched run would not receive it", name)
 		}

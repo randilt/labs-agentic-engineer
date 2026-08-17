@@ -62,6 +62,9 @@ export const START_COMMAND = "/start";
 /** The design CTA's command. */
 export const DESIGN_COMMAND = "/design";
 
+/** The onboarding CTA's command — design-from-facts after analysis.json lands. */
+export const ONBOARD_COMMAND = "/onboard";
+
 /**
  * Parse `/start [idea]`. Returns the inline idea (`""` when the command was
  * bare), or null when the line is not the command at all.

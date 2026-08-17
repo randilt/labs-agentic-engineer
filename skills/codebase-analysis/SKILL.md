@@ -4,7 +4,7 @@ description: Use when reverse-engineering a foreign source repository into struc
 metadata:
   aep:
     kind: platform
-    audience: [design]
+    audience: [coding]
 ---
 
 # Codebase analysis
@@ -18,7 +18,7 @@ deployable units from these facts.
 From the workspace root, run:
 
 ```bash
-node .claude/skills/codebase-analysis/scripts/extract-facts.mjs \
+node "$AEP_SKILLS_DIR/codebase-analysis/scripts/extract-facts.mjs" \
   --source-repo "$AEP_SOURCE_REPO_REF" \
   --ref "${AEP_SOURCE_REF:-HEAD}" \
   --out /tmp/analysis-facts.json

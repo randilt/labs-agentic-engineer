@@ -130,6 +130,9 @@ export const projectHandlers = [
     }
     return HttpResponse.json({ executionId: "exec-onboard-1" }, { status: 202 });
   }),
+  http.get("*/api/v1/projects/:projectName/onboarding", () =>
+    respond(() => ({ status: "idle" })),
+  ),
   // Re-collect an external connection's values (#395 follow-up). Values are
   // write-only on the real platform (secrets go to the secret manager and
   // never echo), so the mock just acknowledges.

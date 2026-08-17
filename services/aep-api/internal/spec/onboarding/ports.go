@@ -28,6 +28,7 @@ type ExecutionStore interface {
 	StartWithRun(ctx context.Context, id, runName string) (*delivery.Execution, error)
 	Finish(ctx context.Context, id, status, reason string) (*delivery.Execution, error)
 	GetByIDScoped(ctx context.Context, orgID, id string) (*delivery.Execution, error)
+	LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*delivery.Execution, error)
 	ListActive(ctx context.Context) ([]delivery.Execution, error)
 }
 

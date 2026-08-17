@@ -1117,6 +1117,17 @@ type OnboardingAnalysisResponse struct {
 	ExecutionID string `json:"executionId"`
 }
 
+// OnboardingAnalysisStatus Latest analysis execution for a project. idle means none has run.
+type OnboardingAnalysisStatus struct {
+	ExecutionID string `json:"executionId,omitempty"`
+
+	// Reason Failure or gating reason when status is failed
+	Reason string `json:"reason,omitempty"`
+
+	// Status Execution lifecycle, or idle when this project has never analyzed
+	Status string `json:"status"`
+}
+
 // OrganizationList defines model for OrganizationList.
 type OrganizationList struct {
 	Items []OrganizationView `json:"items"`

@@ -69,6 +69,7 @@ const (
 var opOwner = map[string]string{
 	"ApplyFiles":                    embedSpec,
 	"StartOnboardingAnalysis":       embedSpec,
+	"GetOnboardingAnalysis":         embedSpec,
 	"BuildProject":                  embedDelivery,
 	"CancelRun":                     embedDelivery,
 	"RevalidateBuild":               embedDelivery,

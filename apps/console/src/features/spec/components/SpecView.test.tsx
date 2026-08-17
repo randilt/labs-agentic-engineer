@@ -157,12 +157,14 @@ vi.mock("@aep/ui-design-view", () => ({
 // QueryClientProvider nor MSW — only the Build routing under test is real. -
 const mockMutateAsync = vi.fn();
 const mockPreflightRefetch = vi.fn();
+const mockUseOnboardingAnalysis = vi.fn();
 vi.mock("../../projects/api/queries", () => ({
   useProject: () => ({ data: { displayName: "Test Project" } }),
   useProjectStatus: () => ({ data: { specStatus: "approved" } }),
   useProjectTags: () => ({ data: { latest: "v1", specDirty: false } }),
   useBuildProject: () => ({ mutateAsync: mockMutateAsync }),
   useBuildPreflight: () => ({ refetch: mockPreflightRefetch }),
+  useOnboardingAnalysis: (...args: unknown[]) => mockUseOnboardingAnalysis(...args),
 }));
 
 // --- Spec queries: delegated through vi.fn()s (rather than fixed inline
@@ -271,6 +273,12 @@ beforeEach(() => {
   });
   mockUseDesignDependencies.mockReturnValue({
     data: [],
+    isPending: false,
+    isError: false,
+    error: null,
+  });
+  mockUseOnboardingAnalysis.mockReturnValue({
+    data: { status: "idle" },
     isPending: false,
     isError: false,
     error: null,
@@ -770,5 +778,54 @@ describe("SpecView header metadata (soft version chips)", () => {
     expect(
       screen.queryByRole("button", { name: /solo|published/i }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("SpecView onboarding analysis handoff", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFlush.mockResolvedValue(undefined);
+    mockUseOnboardingAnalysis.mockReturnValue({
+      data: { status: "succeeded" },
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+  });
+
+  it("seeds /onboard once analysis succeeds and design.cell is absent", () => {
+    render(<SpecView projectName="proj1" />);
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/projects/$projectName/spec",
+      params: { projectName: "proj1" },
+      search: { generate: "onboard" },
+    });
+  });
+
+  it("does not seed /onboard when design.cell already exists", () => {
+    mockUseSpecFiles.mockReturnValue({
+      data: [
+        ...BASE_FILES,
+        { path: "specs/design/design.cell", sha: "cell", group: "designs" },
+      ],
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    render(<SpecView projectName="proj1" />);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("shows an in-flight banner while analysis is running", () => {
+    mockUseOnboardingAnalysis.mockReturnValue({
+      data: { status: "running" },
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    render(<SpecView projectName="proj1" />);
+    expect(screen.getByText("Analyzing source repository")).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

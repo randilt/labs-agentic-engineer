@@ -118,7 +118,7 @@ export function AppLayout() {
   // re-fire it.
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as {
-    generate?: "requirements" | "design";
+    generate?: "requirements" | "design" | "onboard";
   };
   const generate = search.generate;
   useEffect(() => {

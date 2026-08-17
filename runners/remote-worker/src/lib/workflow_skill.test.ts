@@ -438,7 +438,7 @@ test("a skill's references, assets and scripts come along", async () => {
 // mirror). `/app/plugin` was such a path, and it stopped existing when the plugin
 // did; the report generator was still being invoked through it.
 test("no library skill hardcodes a runner path", () => {
-  for (const skill of ["aep", "aep-validation", "playwright-cli"]) {
+  for (const skill of ["aep", "aep-validation", "playwright-cli", "codebase-analysis"]) {
     const body = fs.readFileSync(path.join(LIBRARY, skill, "SKILL.md"), "utf8");
     assert.ok(!body.includes("/app/plugin"), `${skill} names the retired /app/plugin`);
     assert.ok(

@@ -55,4 +55,5 @@ type Deps struct {
 // root never imports the onboarding slice — the slice service satisfies it.
 type OnboardingAnalysis interface {
 	StartAnalysis(ctx context.Context, orgID, projectID, sourceRepoRef string) (executionID string, err error)
+	GetStatus(ctx context.Context, orgID, projectID string) (status, executionID, reason string, err error)
 }

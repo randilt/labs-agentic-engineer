@@ -25,12 +25,13 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
-// Handler serves POST /projects/{projectName}/onboarding.
+// Handler serves GET+POST /projects/{projectName}/onboarding.
 type Handler struct{ svc AnalysisStarter }
 
 // AnalysisStarter is the slice's service port. *Service satisfies it.
 type AnalysisStarter interface {
 	StartAnalysis(ctx context.Context, orgID, projectID, sourceRepoRef string) (string, error)
+	GetStatus(ctx context.Context, orgID, projectID string) (status, executionID, reason string, err error)
 }
 
 // New returns the slice handler.
@@ -58,4 +59,23 @@ func (h *Handler) StartOnboardingAnalysis(ctx context.Context, request gen.Start
 		}
 	}
 	return gen.StartOnboardingAnalysis202JSONResponse(gen.OnboardingAnalysisResponse{ExecutionID: executionID}), nil
+}
+
+func (h *Handler) GetOnboardingAnalysis(ctx context.Context, request gen.GetOnboardingAnalysisRequestObject) (gen.GetOnboardingAnalysisResponseObject, error) {
+	if h.svc == nil {
+		return nil, apierr.ServiceUnavailable("onboarding not configured")
+	}
+	org := tenant.BoundOrgFromContext(ctx)
+	status, executionID, reason, err := h.svc.GetStatus(ctx, org, request.ProjectName)
+	if err != nil {
+		if errors.Is(err, ErrProjectNotFound) {
+			return nil, apierr.NotFound("project not found")
+		}
+		return nil, apierr.Internal("failed to load onboarding analysis")
+	}
+	return gen.GetOnboardingAnalysis200JSONResponse(gen.OnboardingAnalysisStatus{
+		Status:      status,
+		ExecutionID: executionID,
+		Reason:      reason,
+	}), nil
 }

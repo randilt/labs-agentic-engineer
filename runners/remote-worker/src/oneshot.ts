@@ -42,6 +42,7 @@ import { installConsoleScrubber } from "./lib/progress/console_scrub.js";
 import { resolveTaskSkills } from "./lib/skills_resolver.js";
 import { listMirroredSkills, readSkillBodies, resolvePinnedSkills } from "./lib/skills_presence.js";
 import { ClientCredentialsTokenProvider } from "./lib/oauth.js";
+import { seedAnalysisSkills } from "./lib/analysis_skills.js";
 import {
   fetchValidationContext,
   VALIDATION_CONTEXT_FILE,
@@ -114,6 +115,7 @@ function readDispatchFromEnv(): DispatchRequest {
     mcpUrl: mcpUrl || undefined,
     mcpToken: mcpToken || undefined,
     taskKind,
+    sourceRef: process.env.AEP_SOURCE_REF || undefined,
     // OFF unless a human opts this pod in. The sinks are files in a workspace
     // nothing collects, so in the cluster they are write-only — and the debug
     // log holds prompt text. The opt-in exists because a stall that only
@@ -247,6 +249,9 @@ async function main(): Promise<number> {
     }
   } else if (req.taskKind === "analysis") {
     console.log("[oneshot] analysis run — foreign source clone; codebase-analysis skill drives extraction");
+    // The clone is not an AEP project: it has no skill mirror. Seed the
+    // analysis workflow from the image library (see analysis_skills.ts).
+    await seedAnalysisSkills(layout.workspace);
     availableSkillNames = await listMirroredSkills(layout.workspace);
   } else {
     const pinned = await resolveTaskSkills({
