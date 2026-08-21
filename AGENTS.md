@@ -42,3 +42,29 @@ Implementation plans can go to `docs/design/draft` but they should not be commit
 
 `docs/architecture.md` (overview), `docs/decisions/` (ADRs), `docs/glossary.md`
 (domain terms), `docs/developer-guide/` (setup/dev flow).
+
+## Cursor Cloud specific instructions
+
+The VM update script runs `make install` + `make tools` + `make gen`, so deps,
+`golangci-lint`, and generated code are already in place at session start.
+
+- **Generated code is git-ignored, not committed** (e.g.
+  `apps/console/src/generated/aep-api.d.ts`, the TanStack route tree). A fresh
+  checkout has none of it. `make build`/`make test`/`make typecheck` run `gen`
+  first automatically, but `make dev` (and `pnpm --filter … dev`) do NOT — run
+  `make gen` before starting a dev server or the import of generated modules
+  fails. The update script already runs `make gen` once.
+- **Run the console cluster-free (the practical e2e harness):**
+  `VITE_API_MODE=mock pnpm --filter @aep/console dev` → http://localhost:8090.
+  `VITE_API_MODE=mock` implies mock auth (no Thunder/OIDC) and MSW-served APIs,
+  so no backend/Postgres/k3d is needed. Onboarding + "Create project" work fully
+  in mock mode. Mock scenarios: `localStorage['aep:mock:projects'] =
+  'empty'|'some'|'error'`. Vite runs no `tsc`, so the dev server starts even
+  when `tsc` typecheck fails.
+- **The full platform (real BFF + build/deploy) needs Docker + k3d + OpenChoreo
+  + Thunder + Temporal + OpenBao** (`deployments/scripts/setup.sh` then
+  `start.sh`). Docker is NOT installed on the cloud VM and this stack is heavy —
+  it is out of scope for the default cloud setup. Use console mock mode and the
+  `playground` (`pnpm play`, needs `ANTHROPIC_API_KEY`) for cluster-free work.
+- **Go toolchain:** `go.work`/modules target go 1.26.0 and the system `go`
+  auto-downloads it via `GOTOOLCHAIN` on first use — expect a one-time download.
