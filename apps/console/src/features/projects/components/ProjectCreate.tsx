@@ -160,6 +160,10 @@ export function ProjectCreate() {
     setName("");
     setRepoName("");
     setRepoTouched(false);
+    // Onboarding's brief is the imported bundle, not the prompt step's
+    // attachments — a file picked there and left over from a Back navigation
+    // must never ride along as a `referencesPending` upload nobody performs.
+    setFiles([]);
     createProject.reset();
     setStep("confirm");
   };

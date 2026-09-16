@@ -168,6 +168,7 @@ export function keepInTurnSnapshot(path: string): boolean {
  */
 export const REFERENCES_PREFIX = "specs/requirements/references/";
 export const REQUIREMENTS_PREFIX = "specs/requirements/";
+const PRD_PATH = `${REQUIREMENTS_PREFIX}prd.md`;
 
 function isRequirementsSpecPath(path: string): boolean {
   return path.startsWith(REQUIREMENTS_PREFIX) && !path.startsWith(REFERENCES_PREFIX);
@@ -433,6 +434,12 @@ export function overlayReferenceTexts(
  * that reads only the room would report no PRD while the file rail shows the
  * import. The room stays the authority for live edits; git fills gaps and
  * replaces empty or story-less stubs the import superseded.
+ *
+ * The story-based stub replacement is PRD-only: /start's create-time stub is
+ * titled prose with no numbered stories, and only prd.md carries that shape.
+ * Every other requirements document (domain model, business rules,
+ * integrations) has no such stub, so a numbered-looking snapshot there must
+ * never displace a live, non-blank room edit.
  */
 export function overlayRequirementsTexts(
   roomFiles: Record<string, string>,
@@ -447,6 +454,7 @@ export function overlayRequirementsTexts(
       out[path] = snapshotContent;
       continue;
     }
+    if (path !== PRD_PATH) continue;
     // Kickoff can leave a titled stub in the room while git holds the import.
     const snapshotHasStories = /\bUS-\d+\b|^\s*\d+\.\s/m.test(snapshotContent);
     const roomHasStories = /\bUS-\d+\b|^\s*\d+\.\s/m.test(roomContent);

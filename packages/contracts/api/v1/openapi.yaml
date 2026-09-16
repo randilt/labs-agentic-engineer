@@ -2255,6 +2255,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/RequirementsImportResult'
           description: Created
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Rejected — not a valid gzip+tar stream, an unsafe or nested
+            entry, an unsupported extension, the bundle exceeds the size budget,
+            or the PRD is missing/empty/has no numbered user stories. Nothing is
+            committed.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Project repository not found.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: specs/requirements/prd.md already exists (import is create-only),
+            or a spec agent turn is still running for this project.
         default:
           content:
             application/json:

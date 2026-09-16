@@ -63,8 +63,8 @@ func reqImportCode(err error) string {
 func TestExtractRequirementsTarball_Happy(t *testing.T) {
 	t.Parallel()
 	tgz := makeTarGz(t, map[string]string{
-		"requirements/":             "",
-		"requirements/prd.md":       validImportPRD,
+		"requirements/":                "",
+		"requirements/prd.md":          validImportPRD,
 		"requirements/domain-model.md": "# Domain\n",
 	})
 	files, warnings, err := extractRequirementsTarball(bytes.NewReader(tgz))
@@ -82,9 +82,9 @@ func TestExtractRequirementsTarball_Happy(t *testing.T) {
 func TestExtractRequirementsTarball_NestedPath(t *testing.T) {
 	t.Parallel()
 	tgz := makeTarGz(t, map[string]string{
-		"requirements/":                    "",
-		"requirements/prd.md":              validImportPRD,
-		"requirements/features/foo.md":     "# nested",
+		"requirements/":                "",
+		"requirements/prd.md":          validImportPRD,
+		"requirements/features/foo.md": "# nested",
 	})
 	_, _, err := extractRequirementsTarball(bytes.NewReader(tgz))
 	if reqImportCode(err) != "NESTED_PATH" {
@@ -95,13 +95,26 @@ func TestExtractRequirementsTarball_NestedPath(t *testing.T) {
 func TestExtractRequirementsTarball_UnsupportedExt(t *testing.T) {
 	t.Parallel()
 	tgz := makeTarGz(t, map[string]string{
-		"requirements/":        "",
-		"requirements/prd.md":  validImportPRD,
+		"requirements/":          "",
+		"requirements/prd.md":    validImportPRD,
 		"requirements/notes.txt": "nope",
 	})
 	_, _, err := extractRequirementsTarball(bytes.NewReader(tgz))
 	if reqImportCode(err) != "UNSUPPORTED_EXT" {
 		t.Fatalf("err = %v (code %q), want UNSUPPORTED_EXT", err, reqImportCode(err))
+	}
+}
+
+func TestExtractRequirementsTarball_UnsafeFilename(t *testing.T) {
+	t.Parallel()
+	tgz := makeTarGz(t, map[string]string{
+		"requirements/":             "",
+		"requirements/prd.md":       validImportPRD,
+		"requirements/notes\x01.md": "control character in the name",
+	})
+	_, _, err := extractRequirementsTarball(bytes.NewReader(tgz))
+	if reqImportCode(err) != "UNSAFE_ENTRY" {
+		t.Fatalf("err = %v (code %q), want UNSAFE_ENTRY", err, reqImportCode(err))
 	}
 }
 
@@ -148,10 +161,11 @@ type fakeReqFiles struct {
 	applied     *ApplyRequest
 	applyErr    error
 	commitSHA   string
+	listResult  []FileMeta
 }
 
 func (f *fakeReqFiles) List(context.Context, string, string, string) ([]FileMeta, error) {
-	return nil, nil
+	return f.listResult, nil
 }
 func (f *fakeReqFiles) Read(_ context.Context, _, _, path string) (*FileContent, error) {
 	if strings.HasSuffix(path, "prd.md") {
@@ -232,10 +246,17 @@ func TestRequirementsImport_Happy(t *testing.T) {
 	}
 }
 
+// A PRD with a version already cut is the genuine conflict — something has
+// completed since, distinct from resumeIncompleteImport's "committed but
+// never tagged" shape below.
 func TestRequirementsImport_Exists(t *testing.T) {
 	t.Parallel()
 	files := &fakeReqFiles{existingPRD: true}
-	arts := &fakeArtifactSvc{}
+	arts := &fakeArtifactSvc{
+		ListSpecVersionTagsFunc: func(context.Context, string, string) (*TagList, error) {
+			return &TagList{Tags: []string{"v1"}, Latest: "v1"}, nil
+		},
+	}
 	svc := NewRequirementsImportService(files, arts, nil)
 	tgz := makeTarGz(t, map[string]string{
 		"bundle/":       "",
@@ -247,6 +268,64 @@ func TestRequirementsImport_Exists(t *testing.T) {
 	}
 	if files.applied != nil {
 		t.Fatal("Apply must not run when requirements already exist")
+	}
+}
+
+// The one recoverable shape of "requirements already exist": a prior Import
+// committed the files (files.Apply succeeded) but SaveSpec's tag cut then
+// failed. The retry must not be refused forever by the create-only gate — it
+// resumes and completes the missing tag instead.
+func TestRequirementsImport_ResumesAfterTagCutFailure(t *testing.T) {
+	t.Parallel()
+	files := &fakeReqFiles{}
+	tagAttempts := 0
+	arts := &fakeArtifactSvc{
+		ListSpecVersionTagsFunc: func(context.Context, string, string) (*TagList, error) {
+			return &TagList{}, nil // nothing has ever been tagged
+		},
+		SaveSpecFunc: func(_ context.Context, _, _ string, req SaveRequest) (*SpecSaveResult, error) {
+			tagAttempts++
+			if tagAttempts == 1 {
+				return nil, errors.New("boom: transient tag-cut failure")
+			}
+			return &SpecSaveResult{Status: SpecSaveApproved, Tag: "v1", CommitHash: req.CommitSHA}, nil
+		},
+	}
+	svc := NewRequirementsImportService(files, arts, nil)
+
+	// First attempt: the commit lands, but cutting the tag fails.
+	tgz := makeTarGz(t, map[string]string{
+		"bundle/":       "",
+		"bundle/prd.md": validImportPRD,
+	})
+	_, err := svc.Import(context.Background(), "org", "proj", "alice", bytes.NewReader(tgz))
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("first Import err = %v, want the tag-cut failure", err)
+	}
+	if files.applied == nil {
+		t.Fatal("files.Apply should have committed before the tag cut failed")
+	}
+
+	// The retry sees the PRD it just committed and no tag on record — it must
+	// resume, not refuse.
+	files.existingPRD = true
+	files.listResult = []FileMeta{{Path: "specs/requirements/prd.md", SHA: "s1", Size: 10}}
+	tgz2 := makeTarGz(t, map[string]string{
+		"bundle/":       "",
+		"bundle/prd.md": validImportPRD,
+	})
+	res, err := svc.Import(context.Background(), "org", "proj", "alice", bytes.NewReader(tgz2))
+	if err != nil {
+		t.Fatalf("retry Import: %v", err)
+	}
+	if res.Tag != "v1" {
+		t.Fatalf("result = %+v", res)
+	}
+	if len(res.Files) != 1 || res.Files[0] != "specs/requirements/prd.md" {
+		t.Fatalf("resumed result files = %v", res.Files)
+	}
+	if tagAttempts != 2 {
+		t.Fatalf("tagAttempts = %d, want 2", tagAttempts)
 	}
 }
 

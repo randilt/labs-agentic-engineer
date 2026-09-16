@@ -105,7 +105,7 @@ Target ~8 KB per document. Prefer cutting depth over padding.
 Print the exact commands and the console path:
 
 ```bash
-cd .aep && tar czf requirements-bundle.tar.gz -C requirements .
+cd .aep && tar czf requirements-bundle.tar.gz requirements
 # Upload requirements-bundle.tar.gz in the AEP console:
 # Project → Spec → Requirements → Import requirements
 ```

@@ -280,7 +280,8 @@ vi.mock("../api/queries", () => ({
 }));
 
 vi.mock("./ImportRequirementsDialog", () => ({
-  ImportRequirementsDialog: () => null,
+  ImportRequirementsDialog: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="import-requirements-dialog" /> : null,
 }));
 
 // The Security entry's own wiring. Stubbed like every other query here: these
@@ -1236,6 +1237,22 @@ describe("SpecView — a document linked from the chat", () => {
       expect.objectContaining({ to: "/projects/$projectName/spec", params: { projectName: "proj1" }, replace: true }),
     );
     mockSearch.current = {};
+  });
+});
+
+// `?import=requirements` (ADR-0020) is the same one-shot shape: open the
+// dialog once, then strip the param so a reload after the user closes it (or
+// completes the import) does not reopen it.
+describe("SpecView — import requirements on arrival", () => {
+  it("opens the dialog once and strips the param", async () => {
+    render(<SpecView projectName="proj1" openImportOnMount />);
+
+    expect(
+      await screen.findByTestId("import-requirements-dialog"),
+    ).toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/projects/$projectName/spec", params: { projectName: "proj1" }, replace: true }),
+    );
   });
 });
 

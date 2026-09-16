@@ -708,12 +708,24 @@ export const projectHandlers = [
         );
       }
       const projectName = String(params.projectName ?? "project");
+      // Persisted through the same store `files/apply` writes to, so the
+      // import is visible to the file list and the requirements-presence
+      // check on the very next fetch — mirroring the real gate committing
+      // under specs/requirements/ before it cuts a version.
+      const applied = recordAppliedFiles(projectName, [
+        {
+          path: "specs/requirements/prd.md",
+          content:
+            "# Imported PRD\n\n## User Stories\n\n1. As a user, I want the imported flow to work, so that onboarding is proven.\n",
+        },
+        {
+          path: "specs/requirements/domain-model.md",
+          content: "# Domain model\n\nImported from the legacy application.\n",
+        },
+      ]);
       return HttpResponse.json(
         {
-          files: [
-            `specs/requirements/prd.md`,
-            `specs/requirements/domain-model.md`,
-          ],
+          files: applied.map((f) => f.path),
           tag: "v1",
           warnings: fileName.includes("warn")
             ? [`imported into ${projectName} with a soft size warning`]

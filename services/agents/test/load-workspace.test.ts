@@ -631,6 +631,23 @@ test("overlayRequirementsTexts: live room edits with stories win over git", () =
   assert.equal(merged["specs/requirements/prd.md"], room["specs/requirements/prd.md"]);
 });
 
+// The story-based stub replacement is PRD-only (#onboard follow-up): only
+// prd.md gets a kickoff stub, so a numbered-looking snapshot on any other
+// requirements document must never displace a live, non-blank room edit.
+test("overlayRequirementsTexts: a non-PRD room edit is never replaced by a numbered snapshot", () => {
+  const room = {
+    "specs/requirements/domain-model.md": "# Domain\n\nEdited live in the room, no numbers here.",
+  };
+  const git = {
+    "specs/requirements/domain-model.md": "# Domain\n\n1. Order\n2. Customer",
+  };
+  const merged = overlayRequirementsTexts(room, git);
+  assert.equal(
+    merged["specs/requirements/domain-model.md"],
+    room["specs/requirements/domain-model.md"],
+  );
+});
+
 test("readReferenceAttachments: image references become native image-typed file parts (#383 follow-up)", () => {
   const png = Buffer.from("89504e470d0a1a0a0000", "hex"); // PNG magic + padding
   const jpg = Buffer.from("ffd8ffe000104a464946", "hex"); // JPEG magic

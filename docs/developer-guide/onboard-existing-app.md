@@ -33,7 +33,7 @@ looks like an AEP project.
 Pack:
 
 ```bash
-cd .aep && tar czf requirements-bundle.tar.gz -C requirements .
+cd .aep && tar czf requirements-bundle.tar.gz requirements
 ```
 
 ## 3. Import into a new AEP project

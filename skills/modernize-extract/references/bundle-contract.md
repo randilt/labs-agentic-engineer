@@ -125,7 +125,7 @@ Binding to a concrete provider happens at design time inside AEP.
 From the legacy repo after the skill finishes:
 
 ```bash
-cd .aep && tar czf requirements-bundle.tar.gz -C requirements .
+cd .aep && tar czf requirements-bundle.tar.gz requirements
 ```
 
 The archive must contain exactly one top-level directory whose children are

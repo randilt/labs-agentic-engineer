@@ -25,6 +25,7 @@ import (
 	"io"
 	"log/slog"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -36,6 +37,14 @@ const (
 	requirementsImportHardBytes = 256 * 1024
 	requirementsImportSoftBytes = 64 * 1024
 )
+
+// safeRequirementFilenameRE bounds a bundle entry's flat filename beyond the
+// extension check: letters, digits, dot, dash and underscore only, starting
+// with an alphanumeric. Guards against control characters, backslashes and
+// other bytes that are legal in a git blob name but would surprise a
+// downstream tool (a shell, a Windows checkout, a log line) reading the
+// committed path.
+var safeRequirementFilenameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // ErrRequirementsExist — create-only import refused because
 // specs/requirements/prd.md is already at HEAD. Maps to 409.
@@ -108,9 +117,17 @@ func (s *RequirementsImportService) Import(ctx context.Context, orgID, projectID
 	}
 
 	// Create-only: refuse before unpacking so an existing project never sees
-	// a partial apply from a race with a second upload.
-	if err := s.requireAbsentPRD(ctx, orgID, projectID); err != nil {
+	// a partial apply from a race with a second upload. An existing PRD with
+	// no version tag ever cut is not that race — it is a PRIOR import whose
+	// files.Apply landed but whose SaveSpec then failed (a transient tag-cut
+	// error), and the caller's only path forward is to resume it rather than
+	// be refused forever.
+	prdExists, err := s.prdExists(ctx, orgID, projectID)
+	if err != nil {
 		return nil, err
+	}
+	if prdExists {
+		return s.resumeIncompleteImport(ctx, orgID, projectID)
 	}
 	if err := s.requireNoActiveTurn(ctx, orgID, projectID); err != nil {
 		return nil, err
@@ -171,15 +188,53 @@ func (s *RequirementsImportService) Import(ctx context.Context, orgID, projectID
 	}, nil
 }
 
-func (s *RequirementsImportService) requireAbsentPRD(ctx context.Context, orgID, projectID string) error {
+func (s *RequirementsImportService) prdExists(ctx context.Context, orgID, projectID string) (bool, error) {
 	_, err := s.files.Read(ctx, orgID, projectID, path.Join(RequirementsDir, requirementsMainFile))
 	if err == nil {
-		return ErrRequirementsExist
+		return true, nil
 	}
 	if errors.Is(err, ErrFileNotFound) {
-		return nil
+		return false, nil
 	}
-	return fmt.Errorf("check existing requirements: %w", err)
+	return false, fmt.Errorf("check existing requirements: %w", err)
+}
+
+// resumeIncompleteImport completes a prior import that committed its files
+// but never cut a version tag — detected by the absence of any version tag at
+// all, which a completed import (or any completed spec save) always leaves
+// behind (ADR-0030). A PRD with a tag already on record is a genuine
+// conflict: something has completed since, so the caller is refused.
+func (s *RequirementsImportService) resumeIncompleteImport(ctx context.Context, orgID, projectID string) (*RequirementsImportResult, error) {
+	tags, err := s.artifacts.ListSpecVersionTags(ctx, orgID, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("check existing versions: %w", err)
+	}
+	if len(tags.Tags) > 0 {
+		return nil, ErrRequirementsExist
+	}
+	metas, err := s.files.List(ctx, orgID, projectID, RequirementsDir)
+	if err != nil {
+		return nil, fmt.Errorf("list committed requirements: %w", err)
+	}
+	paths := make([]string, 0, len(metas))
+	for _, m := range metas {
+		paths = append(paths, m.Path)
+	}
+	sort.Strings(paths)
+
+	// No CommitSHA: this save is standalone, not chained off a files.Apply
+	// this call just made, so it resolves HEAD itself.
+	save, err := s.artifacts.SaveSpec(ctx, orgID, projectID, SaveRequest{
+		Message: "import requirements bundle",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("tag requirements import: %w", err)
+	}
+
+	slog.InfoContext(ctx, "requirements import resumed — completed a version tag a prior attempt left uncut",
+		"orgID", orgID, "projectID", projectID, "files", len(paths), "tag", save.Tag)
+
+	return &RequirementsImportResult{Files: paths, Tag: save.Tag}, nil
 }
 
 func (s *RequirementsImportService) requireNoActiveTurn(ctx context.Context, orgID, projectID string) error {
@@ -271,6 +326,10 @@ func extractRequirementsTarball(r io.Reader) (files map[string]string, warnings 
 		if !hasAllowedRequirementExt(rel) {
 			return nil, nil, reqImportErr("UNSUPPORTED_EXT",
 				fmt.Sprintf("unsupported requirements extension for %q (allowed: .md, .excalidraw, .dsl)", rel), rel)
+		}
+		if !safeRequirementFilenameRE.MatchString(rel) {
+			return nil, nil, reqImportErr("UNSAFE_ENTRY",
+				fmt.Sprintf("filename %q must be alphanumeric with only . _ - beyond the first character", rel), rel)
 		}
 
 		b, rerr := limited.readAll(tr)

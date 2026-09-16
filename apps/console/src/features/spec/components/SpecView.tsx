@@ -209,9 +209,21 @@ export function SpecView({
   );
   const [selection, setSelection] = useState<SpecSelection | null>(null);
   const [importRequirementsOpen, setImportRequirementsOpen] = useState(false);
+  // `?import=requirements` (ADR-0020) is a one-shot trigger like `?file=`
+  // below: open the dialog, then strip the param so a later reload — whether
+  // the user closed the dialog or is still mid-upload — never reopens it for
+  // a project that may already have requirements.
   useEffect(() => {
-    if (openImportOnMount) setImportRequirementsOpen(true);
-  }, [openImportOnMount]);
+    if (!openImportOnMount) return;
+    setImportRequirementsOpen(true);
+    void navigate({
+      to: "/projects/$projectName/spec",
+      params: { projectName },
+      search: (prev: Record<string, unknown>) =>
+        Object.fromEntries(Object.entries(prev).filter(([k]) => k !== "import")),
+      replace: true,
+    });
+  }, [openImportOnMount, navigate, projectName]);
   // Build (#162): commit-then-build. buildPhase drives the button label /
   // loading; an agent peer in the room means a turn is writing → block Build.
   const build = useBuildProject(projectName);

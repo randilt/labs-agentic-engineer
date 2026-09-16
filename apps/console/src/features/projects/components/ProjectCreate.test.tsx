@@ -277,6 +277,24 @@ describe("ProjectCreate — handing the journey over (#562)", () => {
       }),
     );
   });
+
+  // A file picked for the greenfield prompt must not silently ride along into
+  // onboarding: the bundle IS the brief there, and nothing ever uploads it.
+  it("clears a greenfield attachment when the user switches to onboarding", () => {
+    render(<ProjectCreate />);
+    attach("prd.md");
+    fireEvent.click(screen.getByRole("button", { name: /Import an existing app/i }));
+    fireEvent.change(screen.getByLabelText("Project name"), {
+      target: { value: "legacy-expense" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Create and import requirements/i }));
+
+    expect(createProject.mutate).toHaveBeenCalledWith(
+      expect.not.objectContaining({ referencesPending: expect.anything() }),
+      expect.anything(),
+    );
+    expect(uploadReferences.mutate).not.toHaveBeenCalled();
+  });
 });
 
 

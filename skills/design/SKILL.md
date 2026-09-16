@@ -20,9 +20,9 @@ follow the order below.
 Design FROM the requirements corpus: `specs/requirements/prd.md` is the
 spine, and every other document beside it (domain model, business rules,
 integrations, feature files) is binding context the design must honor — the
-ER model in `design.md` comes from the domain model where one exists, not
-from invention. Do not interview the user again and do not widen or narrow
-the scope: what the requirements say is what gets designed. A missing or
+ER model in `specs/design/domain-model.md` comes from the domain model where
+one exists, not from invention. Do not interview the user again and do not
+widen or narrow the scope: what the requirements say is what gets designed. A missing or
 empty PRD means the user needs `/start` (or an import) first — stop and say
 so.
 
