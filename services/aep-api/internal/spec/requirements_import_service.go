@@ -116,19 +116,12 @@ func (s *RequirementsImportService) Import(ctx context.Context, orgID, projectID
 		return nil, fmt.Errorf("requirements import service: not configured")
 	}
 
-	// Create-only: refuse before unpacking so an existing project never sees
-	// a partial apply from a race with a second upload. An existing PRD with
-	// no version tag ever cut is not that race — it is a PRIOR import whose
-	// files.Apply landed but whose SaveSpec then failed (a transient tag-cut
-	// error), and the caller's only path forward is to resume it rather than
-	// be refused forever.
 	prdExists, err := s.prdExists(ctx, orgID, projectID)
 	if err != nil {
 		return nil, err
 	}
-	if prdExists {
-		return s.resumeIncompleteImport(ctx, orgID, projectID)
-	}
+	// Ordered before either path below runs: a resumed tag cut must not race
+	// a design turn any more than a fresh one may.
 	if err := s.requireNoActiveTurn(ctx, orgID, projectID); err != nil {
 		return nil, err
 	}
@@ -139,6 +132,18 @@ func (s *RequirementsImportService) Import(ctx context.Context, orgID, projectID
 	}
 	if err := gateRequirementsBundle(files); err != nil {
 		return nil, err
+	}
+
+	// Create-only: refuse before writing so an existing project never sees a
+	// partial apply from a race with a second upload. The one exception is a
+	// retry of the SAME import — files.Apply landed but SaveSpec's tag cut
+	// then failed (a transient error) — which resumeIfExactMatch verifies by
+	// byte-comparing the just-uploaded bundle against what is already
+	// committed; anything else (an unrelated PRD, including one with no
+	// version tag — a project mid-/start, say) is refused exactly like any
+	// other existing PRD.
+	if prdExists {
+		return s.resumeIfExactMatch(ctx, orgID, projectID, files, warnings)
 	}
 
 	writes := make([]WriteOp, 0, len(files))
@@ -199,12 +204,20 @@ func (s *RequirementsImportService) prdExists(ctx context.Context, orgID, projec
 	return false, fmt.Errorf("check existing requirements: %w", err)
 }
 
-// resumeIncompleteImport completes a prior import that committed its files
-// but never cut a version tag — detected by the absence of any version tag at
-// all, which a completed import (or any completed spec save) always leaves
-// behind (ADR-0030). A PRD with a tag already on record is a genuine
-// conflict: something has completed since, so the caller is refused.
-func (s *RequirementsImportService) resumeIncompleteImport(ctx context.Context, orgID, projectID string) (*RequirementsImportResult, error) {
+// resumeIfExactMatch completes a prior import that committed its files but
+// never cut a version tag — a transient SaveSpec failure after files.Apply
+// succeeded. The absence of a tag alone is not evidence of that: a project
+// mid-/start can carry a committed PRD with no version ever cut, and treating
+// it as an abandoned import would tag a spec nobody asked to version.
+//
+// The only safe signal is that this upload IS the prior one: every path it
+// would write already exists at HEAD with byte-identical content, and HEAD
+// carries no more requirements files than the bundle names. Anything short of
+// that — different content, extra committed files, or a tag already cut — is
+// the ordinary create-only refusal.
+func (s *RequirementsImportService) resumeIfExactMatch(
+	ctx context.Context, orgID, projectID string, files map[string]string, warnings []string,
+) (*RequirementsImportResult, error) {
 	tags, err := s.artifacts.ListSpecVersionTags(ctx, orgID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("check existing versions: %w", err)
@@ -212,13 +225,29 @@ func (s *RequirementsImportService) resumeIncompleteImport(ctx context.Context, 
 	if len(tags.Tags) > 0 {
 		return nil, ErrRequirementsExist
 	}
+
 	metas, err := s.files.List(ctx, orgID, projectID, RequirementsDir)
 	if err != nil {
 		return nil, fmt.Errorf("list committed requirements: %w", err)
 	}
-	paths := make([]string, 0, len(metas))
-	for _, m := range metas {
-		paths = append(paths, m.Path)
+	if len(metas) != len(files) {
+		return nil, ErrRequirementsExist
+	}
+
+	paths := make([]string, 0, len(files))
+	for name, content := range files {
+		p := path.Join(RequirementsDir, name)
+		paths = append(paths, p)
+		committed, err := s.files.Read(ctx, orgID, projectID, p)
+		if err != nil {
+			if errors.Is(err, ErrFileNotFound) {
+				return nil, ErrRequirementsExist
+			}
+			return nil, fmt.Errorf("check committed requirements: %w", err)
+		}
+		if committed.Content != content {
+			return nil, ErrRequirementsExist
+		}
 	}
 	sort.Strings(paths)
 
@@ -234,7 +263,7 @@ func (s *RequirementsImportService) resumeIncompleteImport(ctx context.Context, 
 	slog.InfoContext(ctx, "requirements import resumed — completed a version tag a prior attempt left uncut",
 		"orgID", orgID, "projectID", projectID, "files", len(paths), "tag", save.Tag)
 
-	return &RequirementsImportResult{Files: paths, Tag: save.Tag}, nil
+	return &RequirementsImportResult{Files: paths, Tag: save.Tag, Warnings: warnings}, nil
 }
 
 func (s *RequirementsImportService) requireNoActiveTurn(ctx context.Context, orgID, projectID string) error {

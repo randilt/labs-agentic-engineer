@@ -1244,15 +1244,30 @@ describe("SpecView — a document linked from the chat", () => {
 // dialog once, then strip the param so a reload after the user closes it (or
 // completes the import) does not reopen it.
 describe("SpecView — import requirements on arrival", () => {
-  it("opens the dialog once and strips the param", async () => {
+  it("opens the dialog once and strips only the import param", async () => {
     render(<SpecView projectName="proj1" openImportOnMount />);
 
     expect(
       await screen.findByTestId("import-requirements-dialog"),
     ).toBeInTheDocument();
     expect(mockNavigate).toHaveBeenCalledWith(
-      expect.objectContaining({ to: "/projects/$projectName/spec", params: { projectName: "proj1" }, replace: true }),
+      expect.objectContaining({
+        to: "/projects/$projectName/spec",
+        params: { projectName: "proj1" },
+        search: expect.any(Function),
+        replace: true,
+      }),
     );
+
+    // The updater strips `import` alone — a `generate`/`view`/`file` param
+    // arriving alongside it (or set afterward) must survive the strip.
+    const call = mockNavigate.mock.calls.find(
+      ([arg]) => arg?.to === "/projects/$projectName/spec",
+    );
+    const search = call?.[0].search as (prev: Record<string, unknown>) => Record<string, unknown>;
+    expect(search({ import: "requirements", generate: "design" })).toEqual({
+      generate: "design",
+    });
   });
 });
 

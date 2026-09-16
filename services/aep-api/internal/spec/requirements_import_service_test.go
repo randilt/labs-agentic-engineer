@@ -156,23 +156,29 @@ func TestGateRequirementsBundle(t *testing.T) {
 	}
 }
 
+// fakeReqFiles is a small in-memory HEAD: `committed` is what Read/List see,
+// and a successful Apply lands its writes there — real enough for
+// resumeIfExactMatch's byte-comparison to mean something, unlike a
+// hardcoded Read response that could never actually match an upload.
 type fakeReqFiles struct {
-	existingPRD bool
-	applied     *ApplyRequest
-	applyErr    error
-	commitSHA   string
-	listResult  []FileMeta
+	committed map[string]string // path -> content, simulates the tree at HEAD
+	applied   *ApplyRequest
+	applyErr  error
+	commitSHA string
 }
 
-func (f *fakeReqFiles) List(context.Context, string, string, string) ([]FileMeta, error) {
-	return f.listResult, nil
+func (f *fakeReqFiles) List(_ context.Context, _, _, prefix string) ([]FileMeta, error) {
+	metas := make([]FileMeta, 0, len(f.committed))
+	for p, c := range f.committed {
+		if strings.HasPrefix(p, prefix) {
+			metas = append(metas, FileMeta{Path: p, SHA: "sha-" + p, Size: int64(len(c))})
+		}
+	}
+	return metas, nil
 }
 func (f *fakeReqFiles) Read(_ context.Context, _, _, path string) (*FileContent, error) {
-	if strings.HasSuffix(path, "prd.md") {
-		if f.existingPRD {
-			return &FileContent{Path: path, Content: "x", SHA: "abc"}, nil
-		}
-		return nil, ErrFileNotFound
+	if c, ok := f.committed[path]; ok {
+		return &FileContent{Path: path, Content: c, SHA: "sha-" + path}, nil
 	}
 	return nil, ErrFileNotFound
 }
@@ -191,8 +197,12 @@ func (f *fakeReqFiles) Apply(_ context.Context, _, _ string, req ApplyRequest) (
 	if sha == "" {
 		sha = "deadbeef"
 	}
+	if f.committed == nil {
+		f.committed = map[string]string{}
+	}
 	out := &ApplyResult{CommitSHA: sha, Changed: true}
 	for _, w := range req.Writes {
+		f.committed[w.Path] = w.Content
 		out.Files = append(out.Files, FileMeta{Path: w.Path, SHA: "blob", Size: int64(len(w.Content))})
 	}
 	return out, nil, nil
@@ -247,11 +257,11 @@ func TestRequirementsImport_Happy(t *testing.T) {
 }
 
 // A PRD with a version already cut is the genuine conflict — something has
-// completed since, distinct from resumeIncompleteImport's "committed but
-// never tagged" shape below.
+// completed since, distinct from resumeIfExactMatch's "committed but never
+// tagged" shape below.
 func TestRequirementsImport_Exists(t *testing.T) {
 	t.Parallel()
-	files := &fakeReqFiles{existingPRD: true}
+	files := &fakeReqFiles{committed: map[string]string{"specs/requirements/prd.md": "unrelated existing PRD"}}
 	arts := &fakeArtifactSvc{
 		ListSpecVersionTagsFunc: func(context.Context, string, string) (*TagList, error) {
 			return &TagList{Tags: []string{"v1"}, Latest: "v1"}, nil
@@ -268,6 +278,34 @@ func TestRequirementsImport_Exists(t *testing.T) {
 	}
 	if files.applied != nil {
 		t.Fatal("Apply must not run when requirements already exist")
+	}
+}
+
+// The absence of a tag is not, by itself, evidence of an abandoned import: a
+// project mid-/start can carry a committed PRD with no version ever cut. Its
+// content will not byte-match an unrelated upload, so it must be refused like
+// any other existing PRD rather than "resumed" into an unwanted tag.
+func TestRequirementsImport_ExistsTaglessButUnrelated(t *testing.T) {
+	t.Parallel()
+	files := &fakeReqFiles{committed: map[string]string{
+		"specs/requirements/prd.md": "# Some other project's PRD, mid-/start, never built",
+	}}
+	arts := &fakeArtifactSvc{
+		ListSpecVersionTagsFunc: func(context.Context, string, string) (*TagList, error) {
+			return &TagList{}, nil // nothing has ever been tagged
+		},
+	}
+	svc := NewRequirementsImportService(files, arts, nil)
+	tgz := makeTarGz(t, map[string]string{
+		"bundle/":       "",
+		"bundle/prd.md": validImportPRD,
+	})
+	_, err := svc.Import(context.Background(), "org", "proj", "alice", bytes.NewReader(tgz))
+	if !errors.Is(err, ErrRequirementsExist) {
+		t.Fatalf("err = %v, want ErrRequirementsExist", err)
+	}
+	if files.applied != nil {
+		t.Fatal("Apply must not run over an unrelated existing PRD")
 	}
 }
 
@@ -306,10 +344,8 @@ func TestRequirementsImport_ResumesAfterTagCutFailure(t *testing.T) {
 		t.Fatal("files.Apply should have committed before the tag cut failed")
 	}
 
-	// The retry sees the PRD it just committed and no tag on record — it must
-	// resume, not refuse.
-	files.existingPRD = true
-	files.listResult = []FileMeta{{Path: "specs/requirements/prd.md", SHA: "s1", Size: 10}}
+	// The retry re-uploads the SAME bundle: it byte-matches what Apply just
+	// committed, and no tag is on record — it must resume, not refuse.
 	tgz2 := makeTarGz(t, map[string]string{
 		"bundle/":       "",
 		"bundle/prd.md": validImportPRD,
