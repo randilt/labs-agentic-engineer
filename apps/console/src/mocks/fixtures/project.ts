@@ -141,7 +141,6 @@ export const projectStatuses: Record<
     hasDesign: false,
     hasTasks: false,
     specStatus: "pending",
-    designStatus: "pending",
     spec: { ...noSpec, agent: "working" },
     build: idleBuild,
     deploy: noDeploy,
@@ -155,7 +154,6 @@ export const projectStatuses: Record<
     hasDesign: true,
     hasTasks: false,
     specStatus: "draft",
-    designStatus: "in_progress",
     spec: { exists: true, version: "", dirty: false, design: true, agent: "" },
     build: idleBuild,
     deploy: noDeploy,
@@ -172,7 +170,6 @@ export const projectStatuses: Record<
     hasDesign: false,
     hasTasks: false,
     specStatus: "failed",
-    designStatus: "",
     spec: { ...noSpec, agent: "failed" },
     build: idleBuild,
     deploy: noDeploy,
@@ -186,7 +183,6 @@ export const projectStatuses: Record<
     hasDesign: false,
     hasTasks: false,
     specStatus: "failed",
-    designStatus: "failed",
     spec: { exists: true, version: "", dirty: false, design: false, agent: "" },
     build: idleBuild,
     deploy: noDeploy,
@@ -201,7 +197,6 @@ export const projectStatuses: Record<
     hasDesign: true,
     hasTasks: false,
     specStatus: "approved",
-    designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: false, design: true, agent: "" },
     build: {
       version: "v1",
@@ -218,7 +213,6 @@ export const projectStatuses: Record<
     hasDesign: true,
     hasTasks: false,
     specStatus: "approved",
-    designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: false, design: true, agent: "" },
     build: {
       version: "v1",
@@ -240,7 +234,6 @@ export const projectStatuses: Record<
     hasDesign: true,
     hasTasks: false,
     specStatus: "approved",
-    designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: true, design: true, agent: "" },
     build: {
       version: "v1",
@@ -264,7 +257,6 @@ export const projectStatuses: Record<
     hasDesign: true,
     hasTasks: false,
     specStatus: "approved",
-    designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: false, design: true, agent: "" },
     build: {
       version: "v1",
@@ -287,7 +279,6 @@ export const projectStatuses: Record<
     hasDesign: false,
     hasTasks: false,
     specStatus: "pending",
-    designStatus: "pending",
     spec: noSpec,
     build: idleBuild,
     deploy: noDeploy,
@@ -344,9 +335,9 @@ const deploymentsByScenario: Partial<
   deploying: {
     storefront: [
       {
-        name: "demo-shop-storefront-development",
+        name: "demo-shop-storefront-default",
         componentName: "storefront",
-        environment: "development",
+        environment: "default",
         status: "Progressing",
         releaseName: "demo-shop-storefront-a1b2c3",
         createdAt: "2026-07-12T05:04:00Z",
@@ -354,9 +345,9 @@ const deploymentsByScenario: Partial<
     ],
     "catalog-api": [
       {
-        name: "demo-shop-catalog-api-development",
+        name: "demo-shop-catalog-api-default",
         componentName: "catalog-api",
-        environment: "development",
+        environment: "default",
         status: "Ready",
         releaseName: "demo-shop-catalog-api-d4e5f6",
         endpointUrl: "https://catalog-api.dev.acme-aep.io",
@@ -365,9 +356,9 @@ const deploymentsByScenario: Partial<
     ],
     "orders-api": [
       {
-        name: "demo-shop-orders-api-development",
+        name: "demo-shop-orders-api-default",
         componentName: "orders-api",
-        environment: "development",
+        environment: "default",
         createdAt: "2026-07-12T05:05:30Z",
       },
     ],
@@ -375,9 +366,9 @@ const deploymentsByScenario: Partial<
   deployed: {
     storefront: [
       {
-        name: "demo-shop-storefront-development",
+        name: "demo-shop-storefront-default",
         componentName: "storefront",
-        environment: "development",
+        environment: "default",
         status: "Ready",
         releaseName: "demo-shop-storefront-a1b2c3",
         endpointUrl: "https://storefront.dev.acme-aep.io",
@@ -386,9 +377,9 @@ const deploymentsByScenario: Partial<
     ],
     "catalog-api": [
       {
-        name: "demo-shop-catalog-api-development",
+        name: "demo-shop-catalog-api-default",
         componentName: "catalog-api",
-        environment: "development",
+        environment: "default",
         status: "Ready",
         releaseName: "demo-shop-catalog-api-d4e5f6",
         endpointUrl: "https://catalog-api.dev.acme-aep.io",
@@ -399,9 +390,9 @@ const deploymentsByScenario: Partial<
     // all-settled while still showing the Undeployed chip.
     "orders-api": [
       {
-        name: "demo-shop-orders-api-development",
+        name: "demo-shop-orders-api-default",
         componentName: "orders-api",
-        environment: "development",
+        environment: "default",
         status: "Undeployed",
         createdAt: "2026-07-12T05:01:00Z",
       },
@@ -410,9 +401,9 @@ const deploymentsByScenario: Partial<
   "deploy-failed": {
     storefront: [
       {
-        name: "demo-shop-storefront-development",
+        name: "demo-shop-storefront-default",
         componentName: "storefront",
-        environment: "development",
+        environment: "default",
         status: "ReleaseFailed",
         releaseName: "demo-shop-storefront-a1b2c3",
         createdAt: "2026-07-12T05:04:00Z",
@@ -420,9 +411,9 @@ const deploymentsByScenario: Partial<
     ],
     "catalog-api": [
       {
-        name: "demo-shop-catalog-api-development",
+        name: "demo-shop-catalog-api-default",
         componentName: "catalog-api",
-        environment: "development",
+        environment: "default",
         status: "Ready",
         releaseName: "demo-shop-catalog-api-d4e5f6",
         endpointUrl: "https://catalog-api.dev.acme-aep.io",
@@ -433,9 +424,9 @@ const deploymentsByScenario: Partial<
     // mid-rollout picture (error + success + transitional).
     "orders-api": [
       {
-        name: "demo-shop-orders-api-development",
+        name: "demo-shop-orders-api-default",
         componentName: "orders-api",
-        environment: "development",
+        environment: "default",
         status: "Progressing",
         releaseName: "demo-shop-orders-api-g7h8i9",
         createdAt: "2026-07-12T05:01:00Z",
@@ -1333,17 +1324,74 @@ const userStories = `# Demo Shop — User stories
 - As a returning customer, I can see my past orders.
 `;
 
-const architectureMd = `# Demo Shop — Component architecture
+const domainModelMd = `# Demo Shop — Domain model
 
-Three components behind the project cell:
+The records the two services own: the catalog's products and the orders a
+customer places against them.
 
-| Component | Type | Responsibility |
-|---|---|---|
-| storefront | web-application | Customer-facing UI |
-| catalog-api | service | Product catalog CRUD + search |
-| orders-api | service | Cart, checkout, order history |
+\`\`\`mermaid
+erDiagram
+    PRODUCT ||--o{ ORDER_LINE : "appears in"
+    ORDER ||--|{ ORDER_LINE : contains
+    PRODUCT {
+        string id PK
+        string name
+        decimal price
+        int stock
+    }
+    ORDER {
+        string id PK
+        string customerId
+        string status "cart | placed | shipped"
+        datetime placedAt
+    }
+    ORDER_LINE {
+        string orderId FK
+        string productId FK
+        int quantity
+    }
+\`\`\`
+`;
 
-The storefront talks to both services; services share nothing.
+const flowBrowseAndCheckout = `# Browse the catalog and check out
+
+A customer searches the catalog, fills a cart, and places the order.
+
+\`\`\`mermaid
+sequenceDiagram
+    actor Customer
+    participant storefront
+    participant catalog-api
+    participant orders-api
+
+    Customer->>storefront: search products
+    storefront->>catalog-api: search
+    Customer->>storefront: add to cart, check out
+    storefront->>orders-api: place order
+    alt a line is out of stock
+        orders-api-->>storefront: refused
+    else
+        orders-api-->>storefront: placed
+    end
+\`\`\`
+`;
+
+const flowOrderHistory = `# Review order history
+
+A signed-in customer opens past orders and follows one to its lines.
+
+\`\`\`mermaid
+sequenceDiagram
+    actor Customer
+    participant storefront
+    participant orders-api
+
+    Customer->>storefront: open order history
+    storefront->>orders-api: list orders
+    Customer->>storefront: open an order
+    storefront->>orders-api: get order + lines
+    orders-api-->>storefront: order detail
+\`\`\`
 `;
 
 // The security design (#665): ONE document, and the Security rail entry reads
@@ -1379,7 +1427,7 @@ const securityJson = `{
 `;
 
 // Per-component design files (#80 rich design view): design.json for each of
-// the three components named in architectureMd, plus one wireframes.dsl for
+// the three components the domain model and flows name, plus one wireframes.dsl for
 // the customer-facing component — enough to exercise the Designs sidebar's
 // component grouping and the derived Architecture / Wireframe views.
 const storefrontDesignJson = `{
@@ -1511,7 +1559,10 @@ const prdOnlyFiles: MockSpecFile[] = [
 const settledSpecFiles: MockSpecFile[] = [
   { path: "specs/requirements/prd.md", content: seededPrd },
   { path: "specs/requirements/user-stories.md", content: userStories },
-  { path: "specs/design/architecture.md", content: architectureMd },
+  // The design root rides with the first design artifact — a domain model
+  // without its cell would claim a design state the platform never produces.
+  { path: "specs/design/design.cell", content: designCell },
+  { path: "specs/design/domain-model.md", content: domainModelMd },
 ];
 
 // The same set mid-interview: the unsettled PRD, which is when assumptions and
@@ -1524,7 +1575,8 @@ const collaborationFiles: MockSpecFile[] = [
 
 const fullFiles: MockSpecFile[] = [
   ...settledSpecFiles,
-  { path: "specs/design/design.cell", content: designCell },
+  { path: "specs/design/flows/browse-and-check-out.md", content: flowBrowseAndCheckout },
+  { path: "specs/design/flows/review-order-history.md", content: flowOrderHistory },
   { path: "specs/design/security.json", content: securityJson },
   {
     path: "specs/design/components/storefront/design.json",

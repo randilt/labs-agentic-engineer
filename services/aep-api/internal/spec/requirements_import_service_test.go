@@ -192,9 +192,9 @@ func TestRequirementsImport_Happy(t *testing.T) {
 	files := &fakeReqFiles{}
 	var saved *SaveRequest
 	arts := &fakeArtifactSvc{
-		SaveRequirementsFunc: func(_ context.Context, _, _ string, req SaveRequest) (*RequirementsSaveResult, error) {
+		SaveSpecFunc: func(_ context.Context, _, _ string, req SaveRequest) (*SpecSaveResult, error) {
 			saved = &req
-			return &RequirementsSaveResult{Status: "approved", Tag: "v1", Version: 1, CommitHash: req.CommitSHA}, nil
+			return &SpecSaveResult{Status: SpecSaveApproved, Tag: "v1", CommitHash: req.CommitSHA}, nil
 		},
 	}
 	svc := NewRequirementsImportService(files, arts, nil)
@@ -207,7 +207,7 @@ func TestRequirementsImport_Happy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	if res.Tag != "v1" || res.Version != 1 {
+	if res.Tag != "v1" {
 		t.Fatalf("result = %+v", res)
 	}
 	if len(res.Files) != 2 {

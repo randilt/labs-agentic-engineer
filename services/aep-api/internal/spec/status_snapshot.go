@@ -40,21 +40,18 @@ type StatusSnapshot struct {
 	// HasSpec: any requirements file at head (the flat hasSpec predicate —
 	// top-level allowed-extension file under specs/requirements/).
 	HasSpec bool
-	// HasDesign: the root design.md exists at head with non-blank content
+	// HasDesign: the root design.cell exists at head with non-blank content
 	// (ReadDesign's presence predicate). Accepted deviation from the retired
-	// read: a design.md with malformed frontmatter counts as present here —
+	// read: a design.cell with malformed frontmatter counts as present here —
 	// the old path failed the whole status read on it, which is worse for a
 	// poll endpoint; the save gate remains the validity enforcer.
 	HasDesign bool
-	// SpecVersion is the newest v<N> spec tag on the mirror; "" when never
-	// published.
+	// SpecVersion is the newest spec version's name on the mirror; "" when
+	// never published.
 	SpecVersion string
 	// SpecDirty: the specs/ subtree at head differs from specs/ at
 	// SpecVersion. Always false when SpecVersion is "".
 	SpecDirty bool
-	// HasDesignTag: any legacy v<N>-<M> design tag exists — the flat
-	// designStatus="approved" predicate.
-	HasDesignTag bool
 	// RequirementsFingerprint is the requirements AS THEY STAND, reduced to one
 	// comparable value (#575). Computed from the head listing this snapshot
 	// already walks, so it costs nothing extra; the staleness check compares it
@@ -109,8 +106,7 @@ func (s *artifactService) StatusSnapshot(ctx context.Context, orgID, projectID s
 	}
 
 	snap.RequirementsFingerprint = RequirementsFingerprint(headEntries)
-	snap.HasDesignTag = latestDesignTag(tags) != ""
-	if latest, _, ok := latestRequirementsTagInfo(tags); ok {
+	if latest, ok := latestVersionTag(tags); ok {
 		snap.SpecVersion = latest.Name
 		// Sha-addressed (the peeled tag commit) — a local read, no fetch.
 		tagEntries, _, err := s.git.Workspace().List(ctx, ref, latest.CommitHash)

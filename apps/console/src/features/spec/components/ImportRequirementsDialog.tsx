@@ -113,11 +113,6 @@ export function ImportRequirementsDialog({
               <strong>Generate design</strong> next.
             </Alert>
             <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-              <Chip
-                label={`version ${result.version}`}
-                size="small"
-                variant="outlined"
-              />
               {files.map((path) => (
                 <Chip
                   key={path}

@@ -79,13 +79,12 @@ func reqImportErr(code, message, path string) *RequirementsImportError {
 type RequirementsImportResult struct {
 	Files    []string
 	Tag      string
-	Version  int
 	Warnings []string
 }
 
 // RequirementsImportService unpacks a requirements-bundle tarball, gates it,
-// commits create-only under specs/requirements/, and cuts a requirements vN
-// tag via SaveRequirements.
+// commits create-only under specs/requirements/, and cuts a version tag via
+// SaveSpec (ADR-0030: the tag is a name, not a number).
 type RequirementsImportService struct {
 	files     FilesService
 	artifacts ArtifactService
@@ -153,7 +152,7 @@ func (s *RequirementsImportService) Import(ctx context.Context, orgID, projectID
 		return nil, fmt.Errorf("apply requirements import: %w", err)
 	}
 
-	save, err := s.artifacts.SaveRequirements(ctx, orgID, projectID, SaveRequest{
+	save, err := s.artifacts.SaveSpec(ctx, orgID, projectID, SaveRequest{
 		CommitSHA: applied.CommitSHA,
 		Message:   "import requirements bundle",
 	})
@@ -168,7 +167,6 @@ func (s *RequirementsImportService) Import(ctx context.Context, orgID, projectID
 	return &RequirementsImportResult{
 		Files:    paths,
 		Tag:      save.Tag,
-		Version:  save.Version,
 		Warnings: warnings,
 	}, nil
 }

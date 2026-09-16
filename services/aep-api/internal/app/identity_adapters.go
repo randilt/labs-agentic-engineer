@@ -20,8 +20,9 @@ package app
 //
 // Three seams, each in one direction:
 //
-//	thundersvc.Client      → identity.Directory   (the IdP admin surface)
-//	spec.ArtifactService   → identity.DesignReader (security.json at a tag)
+//	thundersvc.Client      → identity.Directory   (one environment's IdP admin
+//	                                               surface, built per (org, env)
+//	                                               in identity_targets.go)
 //	identity.EnsureService → provisioning.RolesEnsurer (the build gate's driver)
 //	identity.CatalogService → mcpdiscovery.RoleCatalogLister (the design-time
 //	                                                          `list_roles` tool)
@@ -40,13 +41,17 @@ import (
 	"github.com/wso2/aep/aep-api/internal/dependencies/mcpdiscovery"
 	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/identity"
-	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // -- the identity provider ----------------------------------------------------
 
-// thunderDirectory narrows the Thunder admin client to the group/user slice the
+// thunderDirectory narrows a Thunder admin client to the group/user slice the
 // identity domain uses, translating the two wire types.
+//
+// The client it wraps is per (org, environment): identity_targets.go builds one
+// against that environment's own Thunder from the binding on its OpenChoreo
+// Environment. This type is the translation only, and knows nothing about which
+// instance it is talking to.
 type thunderDirectory struct{ c thundersvc.Client }
 
 func toDirectoryGroup(g thundersvc.Group) identity.DirectoryGroup {
@@ -98,6 +103,26 @@ func (d thunderDirectory) AddMembers(ctx context.Context, group identity.Directo
 	return toDirectoryGroup(g), nil
 }
 
+func (d thunderDirectory) RemoveMembers(ctx context.Context, group identity.DirectoryGroup, memberIDs []string) (identity.DirectoryGroup, error) {
+	g, err := d.c.RemoveGroupMembers(ctx, toThunderGroup(group), memberIDs)
+	if err != nil {
+		return identity.DirectoryGroup{}, err
+	}
+	return toDirectoryGroup(g), nil
+}
+
+func (d thunderDirectory) UserGroups(ctx context.Context, userID string) ([]identity.DirectoryGroup, error) {
+	groups, err := d.c.UserGroups(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]identity.DirectoryGroup, 0, len(groups))
+	for _, g := range groups {
+		out = append(out, toDirectoryGroup(g))
+	}
+	return out, nil
+}
+
 func (d thunderDirectory) FindUserByUsername(ctx context.Context, username string) (*identity.DirectoryAccount, bool, error) {
 	u, found, err := d.c.FindUserByUsername(ctx, username)
 	if err != nil || !found {
@@ -120,23 +145,6 @@ func (d thunderDirectory) SetUserPassword(ctx context.Context, userID, password 
 
 func (d thunderDirectory) DeleteUser(ctx context.Context, userID string) error {
 	return d.c.DeleteUser(ctx, userID)
-}
-
-// -- the design read ----------------------------------------------------------
-
-// identityDesignReader gives the ensure the design bundle at a spec tag, which
-// is where it finds `security.json`. Reading at the TAG rather than at HEAD is the
-// point: the build provisions what the version it is building declares, not
-// what somebody has edited since.
-//
-// The port's method name is GetDesignAtTag; the implementation is deliberately
-// GetDesignAtSpecTag. A build knows only the `v<N>` spec tag, and the
-// similarly-named GetDesignAtTag next door parses its argument as a legacy
-// `v<N>-<M>` design-revision tag and refuses a spec tag outright.
-type identityDesignReader struct{ art spec.ArtifactService }
-
-func (r identityDesignReader) GetDesignAtTag(ctx context.Context, orgID, projectID, tag string) (map[string]string, error) {
-	return r.art.GetDesignAtSpecTag(ctx, orgID, projectID, tag)
 }
 
 // -- the build gate's driver --------------------------------------------------
@@ -175,6 +183,8 @@ func (e rolesEnsurer) EnsureRolesForBuild(ctx context.Context, orgID, projectID,
 		Summary:     result.Summary(),
 		Refusals:    result.HasRefusals(),
 		Credentials: toGateCredentials(result.Credentials),
+		Issuer:      result.Issuer,
+		Environment: result.Environment,
 	}, err
 }
 
@@ -202,8 +212,8 @@ func toGateCredentials(creds []identity.Credential) []provisioning.RolesCredenti
 // struct must not be able to reach an LLM prompt by accident.
 type roleCatalog struct{ svc *identity.CatalogService }
 
-func (c roleCatalog) ListRoleCatalog(ctx context.Context) ([]mcpdiscovery.RoleCatalogEntry, error) {
-	entries, err := c.svc.List(ctx)
+func (c roleCatalog) ListRoleCatalog(ctx context.Context, orgHandle string) ([]mcpdiscovery.RoleCatalogEntry, error) {
+	entries, err := c.svc.List(ctx, orgHandle)
 	if err != nil {
 		return nil, err
 	}

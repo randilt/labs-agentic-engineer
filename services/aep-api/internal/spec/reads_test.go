@@ -30,18 +30,18 @@ import (
 func TestListDesignFiles_AtHead(t *testing.T) {
 	t.Parallel()
 	r := newRig(t, map[string]string{
-		"specs/design/design.md":                   "# system\n",
+		"specs/design/design.cell":                 "# system\n",
 		"specs/design/components/svc/design.md":    "svc\n",
 		"specs/design/components/svc/openapi.yaml": "openapi: 3.0.0\n",
 		"specs/design/components/svc/design.json":  validComponentDesignJSON("svc"),
-		"specs/requirements/prd.md":       "wrong subtree\n",
+		"specs/requirements/prd.md":                "wrong subtree\n",
 	})
 	got, err := r.svc.ListDesignFiles(context.Background(), r.org, r.proj)
 	if err != nil {
 		t.Fatalf("ListDesignFiles: %v", err)
 	}
 	want := map[string]string{
-		"design.md":                   "# system\n",
+		"design.cell":                 "# system\n",
 		"components/svc/design.md":    "svc\n",
 		"components/svc/openapi.yaml": "openapi: 3.0.0\n",
 		"components/svc/design.json":  validComponentDesignJSON("svc"),
@@ -51,110 +51,55 @@ func TestListDesignFiles_AtHead(t *testing.T) {
 	}
 }
 
-func TestGetRequirementsAtTag_PinsApprovedVersion(t *testing.T) {
+// A version is read back at the name the USER gave it. `m1` is not `v<N>`, and
+// the read used to demand that shape — so a build could not read the design of
+// the version it had just cut.
+func TestGetDesignAtTag_PinsAVersionTheUserNamed(t *testing.T) {
 	t.Parallel()
-	r := newRig(t, map[string]string{"specs/requirements/prd.md": "v1 content\n"})
-	ctx := context.Background()
-	if _, err := r.svc.SaveRequirements(ctx, r.org, r.proj, SaveRequest{}); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-	// Draft moves past v1 on HEAD.
-	r.seed(map[string]string{"specs/requirements/prd.md": "later draft\n"}, "draft")
-
-	at, err := r.svc.GetRequirementsAtTag(ctx, r.org, r.proj, "v1")
-	if err != nil {
-		t.Fatalf("GetRequirementsAtTag: %v", err)
-	}
-	if at["prd.md"] != "v1 content\n" {
-		t.Errorf("at v1 = %q, want the pinned v1 content (not HEAD)", at["prd.md"])
-	}
-}
-
-func TestGetDesignAtTag_PinsApprovedVersion(t *testing.T) {
-	t.Parallel()
-	r := newRig(t, map[string]string{"specs/requirements/prd.md": "spec\n"})
-	ctx := context.Background()
-	if _, err := r.svc.SaveRequirements(ctx, r.org, r.proj, SaveRequest{}); err != nil {
-		t.Fatalf("save requirements: %v", err)
-	}
-	r.seed(map[string]string{
-		"specs/design/design.md":                  "# v1-1\n",
+	r := newRig(t, map[string]string{
+		"specs/requirements/prd.md":               "spec\n",
+		"specs/design/design.cell":                "# m1\n",
 		"specs/design/components/svc/design.json": validComponentDesignJSON("svc"),
-	}, "design")
-	if _, err := r.svc.SaveDesign(ctx, r.org, r.proj, SaveRequest{}); err != nil {
-		t.Fatalf("save design: %v", err)
+	})
+	ctx := context.Background()
+	if _, err := r.svc.SaveSpec(ctx, r.org, r.proj, SaveRequest{Name: "m1"}); err != nil {
+		t.Fatalf("save spec: %v", err)
 	}
-	r.seed(map[string]string{"specs/design/design.md": "# later\n"}, "draft")
+	r.seed(map[string]string{"specs/design/design.cell": "# later\n"}, "draft")
 
-	at, err := r.svc.GetDesignAtTag(ctx, r.org, r.proj, "v1-1")
+	at, err := r.svc.GetDesignAtTag(ctx, r.org, r.proj, "m1")
 	if err != nil {
-		t.Fatalf("GetDesignAtTag: %v", err)
+		t.Fatalf("GetDesignAtTag(m1): %v", err)
 	}
-	if at["design.md"] != "# v1-1\n" {
-		t.Errorf("at v1-1 = %q, want pinned design", at["design.md"])
+	if at["design.cell"] != "# m1\n" {
+		t.Errorf("at m1 = %q, want the pinned design, not HEAD", at["design.cell"])
 	}
 }
 
-func TestGetRequirementsAtTag_MissingTag(t *testing.T) {
+// An absent tag is "not found", not "malformed": the name was answerable, the
+// version simply is not there.
+func TestGetDesignAtTag_MissingTag(t *testing.T) {
 	t.Parallel()
 	r := newRig(t, map[string]string{"specs/requirements/prd.md": "x\n"})
-	_, err := r.svc.GetRequirementsAtTag(context.Background(), r.org, r.proj, "v9")
+	_, err := r.svc.GetDesignAtTag(context.Background(), r.org, r.proj, "never-cut")
 	if !errors.Is(err, ErrArtifactNotFound) {
 		t.Fatalf("err = %v, want ErrArtifactNotFound for an absent tag", err)
 	}
 }
 
-func TestGetRequirementsAtTag_InvalidTag(t *testing.T) {
+// The read applies the SAME name rule the save does, so a string that could
+// never have become a version cannot be asked for either. Without it the name
+// reaches ref resolution as `tags/<name>`, and `../heads/main` walks out of the
+// tag namespace onto a branch — reading a MOVING ref while the caller believes
+// it pinned a frozen version.
+func TestGetDesignAtTag_RefusesANameNoVersionCouldCarry(t *testing.T) {
 	t.Parallel()
 	r := newRig(t, map[string]string{"specs/requirements/prd.md": "x\n"})
-	_, err := r.svc.GetRequirementsAtTag(context.Background(), r.org, r.proj, "not-a-tag")
-	if !errors.Is(err, ErrInvalidVersionTag) {
-		t.Fatalf("err = %v, want ErrInvalidVersionTag", err)
-	}
-}
-
-func TestListRequirementsVersions_Descending(t *testing.T) {
-	t.Parallel()
-	r := newRig(t, map[string]string{"specs/requirements/prd.md": "v1\n"})
 	ctx := context.Background()
-	if _, err := r.svc.SaveRequirements(ctx, r.org, r.proj, SaveRequest{}); err != nil {
-		t.Fatalf("save v1: %v", err)
-	}
-	r.seed(map[string]string{"specs/requirements/prd.md": "v2\n"}, "edit")
-	if _, err := r.svc.SaveRequirements(ctx, r.org, r.proj, SaveRequest{}); err != nil {
-		t.Fatalf("save v2: %v", err)
-	}
-
-	versions, err := r.svc.ListRequirementsVersions(ctx, r.org, r.proj)
-	if err != nil {
-		t.Fatalf("ListRequirementsVersions: %v", err)
-	}
-	if len(versions) != 2 || versions[0].Version != 2 || versions[1].Version != 1 {
-		t.Fatalf("versions = %+v, want [v2, v1] descending", versions)
-	}
-	if versions[0].CommitHash != r.headSHA() {
-		t.Errorf("v2 commit hash = %s, want the peeled tagged commit %s", versions[0].CommitHash, r.headSHA())
-	}
-	// The local tag read restores the annotation subject the Git Data refs API
-	// could not expose — the versions endpoints now carry it.
-	if versions[0].Message != "Requirements v2" || versions[1].Message != "Requirements v1" {
-		t.Errorf("messages = [%q, %q], want the tag annotation subjects", versions[0].Message, versions[1].Message)
-	}
-}
-
-// A fresh repo with no tags yet lists empty versions (not an error) for both
-// artifact kinds — the no-tags edge of the version endpoints.
-func TestListVersions_NoTagsYet_Empty(t *testing.T) {
-	t.Parallel()
-	r := newRig(t, map[string]string{"specs/requirements/prd.md": "draft\n"})
-	ctx := context.Background()
-	reqs, err := r.svc.ListRequirementsVersions(ctx, r.org, r.proj)
-	if err != nil || len(reqs) != 0 {
-		t.Fatalf("ListRequirementsVersions = (%v, %v), want empty, nil", reqs, err)
-	}
-	designs, err := r.svc.ListDesignVersions(ctx, r.org, r.proj)
-	if err != nil || len(designs) != 0 {
-		t.Fatalf("ListDesignVersions = (%v, %v), want empty, nil", designs, err)
+	for _, name := range []string{"../heads/main", "has space", "", ".hidden", "ends.lock", "a..b"} {
+		if _, err := r.svc.GetDesignAtTag(ctx, r.org, r.proj, name); !errors.Is(err, ErrInvalidVersionTag) {
+			t.Errorf("GetDesignAtTag(%q) err = %v, want ErrInvalidVersionTag", name, err)
+		}
 	}
 }
 
@@ -162,16 +107,16 @@ func TestListVersions_NoTagsYet_Empty(t *testing.T) {
 // commit its apply just created, never a ref resolution that could lag.
 func TestGetDesignAtCommit_PinsExactCommit(t *testing.T) {
 	t.Parallel()
-	r := newRig(t, map[string]string{"specs/design/design.md": "# early\n"})
+	r := newRig(t, map[string]string{"specs/design/design.cell": "# early\n"})
 	pinned := r.headSHA()
-	r.seed(map[string]string{"specs/design/design.md": "# later\n"}, "later edit")
+	r.seed(map[string]string{"specs/design/design.cell": "# later\n"}, "later edit")
 
 	at, err := r.svc.GetDesignAtCommit(context.Background(), r.org, r.proj, pinned)
 	if err != nil {
 		t.Fatalf("GetDesignAtCommit: %v", err)
 	}
-	if at["design.md"] != "# early\n" {
-		t.Errorf("at %s = %q, want the pinned commit's content (not HEAD)", pinned, at["design.md"])
+	if at["design.cell"] != "# early\n" {
+		t.Errorf("at %s = %q, want the pinned commit's content (not HEAD)", pinned, at["design.cell"])
 	}
 }
 
@@ -180,22 +125,22 @@ func TestGetDesignAtCommit_PinsExactCommit(t *testing.T) {
 // is no cache tier to go stale.
 func TestListDesignFiles_SeesOriginAdvanceImmediately(t *testing.T) {
 	t.Parallel()
-	r := newRig(t, map[string]string{"specs/design/design.md": "v1\n"})
+	r := newRig(t, map[string]string{"specs/design/design.cell": "v1\n"})
 	ctx := context.Background()
 
 	got, err := r.svc.ListDesignFiles(ctx, r.org, r.proj)
-	if err != nil || got["design.md"] != "v1\n" {
+	if err != nil || got["design.cell"] != "v1\n" {
 		t.Fatalf("first read = (%v, %v), want v1", got, err)
 	}
 
-	r.seed(map[string]string{"specs/design/design.md": "v2 external\n"}, "external edit")
+	r.seed(map[string]string{"specs/design/design.cell": "v2 external\n"}, "external edit")
 
 	got, err = r.svc.ListDesignFiles(ctx, r.org, r.proj)
 	if err != nil {
 		t.Fatalf("second read: %v", err)
 	}
-	if got["design.md"] != "v2 external\n" {
-		t.Errorf("second read = %q, want the origin's new commit (fetch freshness)", got["design.md"])
+	if got["design.cell"] != "v2 external\n" {
+		t.Errorf("second read = %q, want the origin's new commit (fetch freshness)", got["design.cell"])
 	}
 }
 
@@ -205,7 +150,7 @@ func TestListDesignFiles_SeesOriginAdvanceImmediately(t *testing.T) {
 func TestAssembleDesign_ComponentFromDesignJSON(t *testing.T) {
 	t.Parallel()
 	design, err := AssembleDesign(map[string]string{
-		"design.md": "---\nsourceSpec: v1\n---\n# Overview\n",
+		"design.cell": "---\nsourceSpec: v1\n---\n# Overview\n",
 		"components/task-api/design.json": `{"name":"task-api","type":"service","version":"1.0.0",` +
 			`"language":"go","buildpack":"go","appPath":"task-api","entrypoint":"main.go",` +
 			`"exposure":"internet","dependencies":[` +
@@ -256,7 +201,7 @@ func TestAssembleDesign_ComponentFromDesignJSON(t *testing.T) {
 func TestAssembleDesign_DesignJSONOnly_LegacyMdSkipped(t *testing.T) {
 	t.Parallel()
 	design, err := AssembleDesign(map[string]string{
-		"design.md":                   "# o\n",
+		"design.cell":                 "# o\n",
 		"components/svc/design.md":    "---\ntype: web-app\nlanguage: python\n---\nlegacy body\n",
 		"components/svc/design.json":  validComponentDesignJSON("svc"),
 		"components/legacy/design.md": "---\ntype: service\nlanguage: java\n---\nold-style component\n",
@@ -279,7 +224,7 @@ func TestAssembleDesign_DesignJSONOnly_LegacyMdSkipped(t *testing.T) {
 func TestAssembleDesign_MalformedDesignJSONErrors(t *testing.T) {
 	t.Parallel()
 	_, err := AssembleDesign(map[string]string{
-		"design.md":                  "# o\n",
+		"design.cell":                "# o\n",
 		"components/bad/design.json": "{not json",
 	})
 	if err == nil {

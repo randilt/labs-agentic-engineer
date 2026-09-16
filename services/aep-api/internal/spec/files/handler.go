@@ -190,7 +190,6 @@ func (h *Handler) ImportRequirements(ctx context.Context, request gen.ImportRequ
 	return gen.ImportRequirements201JSONResponse(gen.RequirementsImportResult{
 		Files:    result.Files,
 		Tag:      result.Tag,
-		Version:  result.Version,
 		Warnings: warnings,
 	}), nil
 }
