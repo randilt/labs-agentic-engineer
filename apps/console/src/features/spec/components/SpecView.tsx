@@ -54,6 +54,7 @@ import { computeDependencyUsedBy } from "../lib/dependencyUsedBy";
 import { useCollabSpec } from "../collab/useCollabSpec";
 import { SpecQuestionForm } from "./SpecQuestionForm";
 import { SecurityPanel } from "./SecurityPanel";
+import { useApiViewSecurity } from "../hooks/useApiViewSecurity";
 import { useSecurityEntry } from "../hooks/useSecurityEntry";
 import { useRoomQuestion } from "../../agent-chat/useRoomQuestion";
 import { CollabTextArea } from "../collab/CollabTextArea";
@@ -603,6 +604,14 @@ export function SpecView({
     files,
     collab,
     agentInRoom,
+  });
+  // What the API view cannot read off the contract in front of it: who grants
+  // each scope, and the audience those scopes are on. Read only while a
+  // contract is the selection.
+  const apiSecurity = useApiViewSecurity({
+    projectName,
+    active: isOpenApiFile,
+    collab,
   });
 
   const content = useSpecFileContent(
@@ -1401,10 +1410,15 @@ export function SpecView({
                 />
               ) : effectiveSelection.kind === "security" ? (
                 <SecurityPanel
+                  projectName={projectName}
                   securityJson={security.securityJson}
                   live={security.live}
                   isPending={security.isPending}
                   isError={security.isError}
+                  references={security.references}
+                  roomLive={security.roomLive}
+                  writeSecurityJson={security.writeSecurityJson}
+                  dependencies={dependencies.data}
                 />
               ) : effectiveSelection.kind === "wireframe" ? (
                 <WireframePanel
@@ -1423,7 +1437,11 @@ export function SpecView({
                     // Fresh from the live collab doc — ahead of (or newer
                     // than) the committed copy.
                     isOpenApiFile ? (
-                      <OpenApiView spec={structuredLive} />
+                      <OpenApiView
+                        spec={structuredLive}
+                        roles={apiSecurity.roles}
+                        resourceServer={apiSecurity.resourceServer}
+                      />
                     ) : isValidationCriteriaFile ? (
                       <ValidationView criteria={structuredLive} />
                     ) : isDependencyDefinitionFile ? (
@@ -1450,6 +1468,8 @@ export function SpecView({
                       <OpenApiView
                         key={content.data.sha}
                         spec={content.data.content}
+                        roles={apiSecurity.roles}
+                        resourceServer={apiSecurity.resourceServer}
                       />
                     ) : isValidationCriteriaFile ? (
                       <ValidationView

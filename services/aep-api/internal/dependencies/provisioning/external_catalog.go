@@ -189,9 +189,9 @@ func (s *Service) registeredEnvCells(ctx context.Context, orgID, name string) []
 // are never copied — only status, and SecretStorePath when the vault key can
 // be derived from the request JWT.
 func (s *Service) synthesizeRegisteredEnvCells(ctx context.Context, orgID string, def openchoreo.ExternalResourceDefinition) []EnvCell {
-	envs := []string{defaultEnv}
-	if names, err := s.ListOrgEnvironments(ctx, orgID); err == nil && len(names) > 0 {
-		envs = names
+	envs := []string{defaultEnv()}
+	if infos, err := s.ListOrgEnvironments(ctx, orgID); err == nil && len(infos) > 0 {
+		envs = environmentNames(infos)
 	}
 	keys := toConfigKeys(def.Config)
 	if len(keys) == 0 {
