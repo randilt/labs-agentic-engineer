@@ -54,6 +54,7 @@ import { computeDependencyUsedBy } from "../lib/dependencyUsedBy";
 import { useCollabSpec } from "../collab/useCollabSpec";
 import { SpecQuestionForm } from "./SpecQuestionForm";
 import { SecurityPanel } from "./SecurityPanel";
+import { useApiViewSecurity } from "../hooks/useApiViewSecurity";
 import { useSecurityEntry } from "../hooks/useSecurityEntry";
 import { useRoomQuestion } from "../../agent-chat/useRoomQuestion";
 import { CollabTextArea } from "../collab/CollabTextArea";
@@ -86,6 +87,7 @@ import type { Anchor } from "../lib/anchor";
 import type { DependencyResolutionIntent } from "../../projects/lib/dependencyResolutionMessage.js";
 import { usePlan } from "../../agent-chat/usePlan";
 import { approvalInputsFor } from "../lib/buildInputs";
+import { ImportRequirementsDialog } from "./ImportRequirementsDialog";
 import { ResolveDependenciesDialog } from "./ResolveDependenciesDialog";
 import { StartBuildDialog } from "./StartBuildDialog";
 import { blockingDependencies } from "../lib/blockingDependencies";
@@ -160,7 +162,13 @@ export function designWarningIntro(reasons: ReadonlyArray<{ key: string }>): str
   );
 }
 
-export function SpecView({ projectName }: { projectName: string }) {
+export function SpecView({
+  projectName,
+  openImportOnMount = false,
+}: {
+  projectName: string;
+  openImportOnMount?: boolean;
+}) {
   const navigate = useNavigate();
   const { actions } = useAppShell();
   const status = useProjectStatus(projectName);
@@ -201,6 +209,22 @@ export function SpecView({ projectName }: { projectName: string }) {
     projectName,
   );
   const [selection, setSelection] = useState<SpecSelection | null>(null);
+  const [importRequirementsOpen, setImportRequirementsOpen] = useState(false);
+  // `?import=requirements` (ADR-0020) is a one-shot trigger like `?file=`
+  // below: open the dialog, then strip the param so a later reload — whether
+  // the user closed the dialog or is still mid-upload — never reopens it for
+  // a project that may already have requirements.
+  useEffect(() => {
+    if (!openImportOnMount) return;
+    setImportRequirementsOpen(true);
+    void navigate({
+      to: "/projects/$projectName/spec",
+      params: { projectName },
+      search: (prev: Record<string, unknown>) =>
+        Object.fromEntries(Object.entries(prev).filter(([k]) => k !== "import")),
+      replace: true,
+    });
+  }, [openImportOnMount, navigate, projectName]);
   // Build (#162): commit-then-build. buildPhase drives the button label /
   // loading; an agent peer in the room means a turn is writing → block Build.
   const build = useBuildProject(projectName);
@@ -581,6 +605,14 @@ export function SpecView({ projectName }: { projectName: string }) {
     collab,
     agentInRoom,
   });
+  // What the API view cannot read off the contract in front of it: who grants
+  // each scope, and the audience those scopes are on. Read only while a
+  // contract is the selection.
+  const apiSecurity = useApiViewSecurity({
+    projectName,
+    active: isOpenApiFile,
+    collab,
+  });
 
   const content = useSpecFileContent(
     projectName,
@@ -845,6 +877,8 @@ export function SpecView({ projectName }: { projectName: string }) {
   // reachable mid-interview — and firing one supersedes the live questions,
   // handing the agent's own assumptions back as the user's answers.
   const awaitingAnswers = Boolean(roomQuestion && roomDoc);
+  const canImportRequirements =
+    !hasRequirementsFiles && !deriving && !localTurnActivity && !awaitingAnswers;
   // A lens fired while the agent already holds the turn would be refused by the
   // composer anyway, and firing one mid-interview supersedes the live question
   // form for the whole room — so the lenses go inert for the same two reasons
@@ -1340,6 +1374,11 @@ export function SpecView({ projectName }: { projectName: string }) {
                 files={files}
                 selection={effectiveSelection}
                 onSelect={selectManually}
+                {...(canImportRequirements
+                  ? {
+                      onImportRequirements: () => setImportRequirementsOpen(true),
+                    }
+                  : {})}
                 onRegenerateDesign={generateDesign}
                 regenerateDisabled={agentBusy}
                 sections={railSections}
@@ -1371,10 +1410,15 @@ export function SpecView({ projectName }: { projectName: string }) {
                 />
               ) : effectiveSelection.kind === "security" ? (
                 <SecurityPanel
+                  projectName={projectName}
                   securityJson={security.securityJson}
                   live={security.live}
                   isPending={security.isPending}
                   isError={security.isError}
+                  references={security.references}
+                  roomLive={security.roomLive}
+                  writeSecurityJson={security.writeSecurityJson}
+                  dependencies={dependencies.data}
                 />
               ) : effectiveSelection.kind === "wireframe" ? (
                 <WireframePanel
@@ -1393,7 +1437,11 @@ export function SpecView({ projectName }: { projectName: string }) {
                     // Fresh from the live collab doc — ahead of (or newer
                     // than) the committed copy.
                     isOpenApiFile ? (
-                      <OpenApiView spec={structuredLive} />
+                      <OpenApiView
+                        spec={structuredLive}
+                        roles={apiSecurity.roles}
+                        resourceServer={apiSecurity.resourceServer}
+                      />
                     ) : isValidationCriteriaFile ? (
                       <ValidationView criteria={structuredLive} />
                     ) : isDependencyDefinitionFile ? (
@@ -1420,6 +1468,8 @@ export function SpecView({ projectName }: { projectName: string }) {
                       <OpenApiView
                         key={content.data.sha}
                         spec={content.data.content}
+                        roles={apiSecurity.roles}
+                        resourceServer={apiSecurity.resourceServer}
                       />
                     ) : isValidationCriteriaFile ? (
                       <ValidationView
@@ -1640,6 +1690,13 @@ export function SpecView({ projectName }: { projectName: string }) {
           </Box>
         )}
       </Box>
+
+      <ImportRequirementsDialog
+        open={importRequirementsOpen}
+        onClose={() => setImportRequirementsOpen(false)}
+        projectName={projectName}
+        onImported={() => collab.resyncRoom()}
+      />
 
       <ResolveDependenciesDialog
         open={buildDialog === "resolve"}

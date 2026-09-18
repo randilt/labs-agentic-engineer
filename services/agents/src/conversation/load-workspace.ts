@@ -128,19 +128,48 @@ function isAdmittedSpecPath(path: string): boolean {
 }
 
 /**
+ * The project's security design — ONE design-level file, admitted by its EXACT
+ * path rather than by basename.
+ *
+ * It has to be in the snapshot for two reasons a later turn depends on: the
+ * agent that wrote it in turn N must be able to read it back in turn N+1
+ * (otherwise every subsequent read is `NO_SUCH_FILE`), and the openapi.yaml
+ * write gate reads the permission catalog OUT OF THE BUNDLE — with the file
+ * invisible, `catalogOwners()` returns null and the gate's catalog rules go
+ * deliberately lenient, so a stale scope handle in a later openapi.yaml edit is
+ * accepted.
+ *
+ * A basename match would be wrong: the contract is the single project-level
+ * catalog (`securityDesignJsonSchema` in `@aep/agent-stream` claims this path
+ * and no other), so a `specs/design/components/<c>/security.json` is not a
+ * second, per-component catalog — nothing reads it and nothing validates it.
+ * Admitting one would put an unvalidated file the agent can neither gate nor
+ * act on into every turn.
+ */
+const SECURITY_DESIGN_PATH = "specs/design/security.json";
+
+/**
  * The turn-snapshot filter — mirrors aep-api `agentfold.KeepInTurnSnapshot`:
  * keep agent-authored sources (`*.md`, `*.dsl`, `*.cell`, component
- * `design.json`, the acceptance oracle `validation-criteria.json`, the two
- * OpenAPI contract shapes above) and drop everything else (derived
- * `.excalidraw`/`*.gen.json` projections, code, arbitrary `*.yaml` such as
- * `workload.yaml`, …). `*.cell` is the project-level cell-diagram DSL
- * (design.cell) that drives the live architecture diagram.
- * validation-criteria.json is kept so a design regeneration can see the
- * existing oracle and preserve its covered flags instead of resetting them.
+ * `design.json`, the acceptance oracle `validation-criteria.json`, the project
+ * security design `specs/design/security.json`, the two OpenAPI contract shapes
+ * above) and drop everything else (derived `.excalidraw`/`*.gen.json`
+ * projections, code, arbitrary `*.yaml` such as `workload.yaml`, …). `*.cell`
+ * is the project-level cell-diagram DSL (design.cell) that drives the live
+ * architecture diagram. validation-criteria.json is kept so a design
+ * regeneration can see the existing oracle and preserve its covered flags
+ * instead of resetting them.
+ *
+ * The two filters are ONE rule implemented twice: a change here that is not
+ * made in `snapshot_filter.go` silently changes what a turn can read on one
+ * side only (the agents-side FileBundle and the Go fold then disagree about
+ * whether a path exists). `test/load-workspace.test.ts` and
+ * `snapshot_filter_test.go` pin the same fixed accept/reject table.
  */
 export function keepInTurnSnapshot(path: string): boolean {
   if (path.endsWith(".md") || path.endsWith(".dsl") || path.endsWith(".cell")) return true;
   if (isAdmittedSpecPath(path)) return true;
+  if (path === SECURITY_DESIGN_PATH) return true;
   if (isTextReferencePath(path)) return true;
   const base = basename(path);
   return base === "design.json" || base === "validation-criteria.json";
@@ -167,6 +196,17 @@ export function keepInTurnSnapshot(path: string): boolean {
  * ADR-0017), which is exactly why nothing in this file had to change.
  */
 export const REFERENCES_PREFIX = "specs/requirements/references/";
+export const REQUIREMENTS_PREFIX = "specs/requirements/";
+const PRD_PATH = `${REQUIREMENTS_PREFIX}prd.md`;
+
+function isRequirementsSpecPath(path: string): boolean {
+  return path.startsWith(REQUIREMENTS_PREFIX) && !path.startsWith(REFERENCES_PREFIX);
+}
+
+/** True when markdown carries no authored body (empty file or whitespace only). */
+function isEmptyMarkdown(content: string): boolean {
+  return content.trim().length === 0;
+}
 
 function isTextReferencePath(path: string): boolean {
   return path.startsWith(REFERENCES_PREFIX) && nativeMediaTypeFor(path) === undefined;
@@ -412,6 +452,45 @@ export function overlayReferenceTexts(
   if (refs.length === 0) return roomFiles;
   const out = { ...roomFiles };
   for (const [path, content] of refs) out[path] = content;
+  return out;
+}
+
+/**
+ * Overlay the SNAPSHOT's requirements texts onto a room-scoped turn when the
+ * room is missing them or still holds a create-time stub. Requirements import
+ * (#onboard) commits straight to git; the collab room may have connected and
+ * seeded (or been stubbed by /start) before the upload landed, so a design turn
+ * that reads only the room would report no PRD while the file rail shows the
+ * import. The room stays the authority for live edits; git fills gaps and
+ * replaces empty or story-less stubs the import superseded.
+ *
+ * The story-based stub replacement is PRD-only: /start's create-time stub is
+ * titled prose with no numbered stories, and only prd.md carries that shape.
+ * Every other requirements document (domain model, business rules,
+ * integrations) has no such stub, so a numbered-looking snapshot there must
+ * never displace a live, non-blank room edit.
+ */
+export function overlayRequirementsTexts(
+  roomFiles: Record<string, string>,
+  snapshotFiles: Record<string, string>,
+): Record<string, string> {
+  const reqs = Object.entries(snapshotFiles).filter(([path]) => isRequirementsSpecPath(path));
+  if (reqs.length === 0) return roomFiles;
+  const out = { ...roomFiles };
+  for (const [path, snapshotContent] of reqs) {
+    const roomContent = out[path];
+    if (roomContent === undefined || isEmptyMarkdown(roomContent)) {
+      out[path] = snapshotContent;
+      continue;
+    }
+    if (path !== PRD_PATH) continue;
+    // Kickoff can leave a titled stub in the room while git holds the import.
+    const snapshotHasStories = /\bUS-\d+\b|^\s*\d+\.\s/m.test(snapshotContent);
+    const roomHasStories = /\bUS-\d+\b|^\s*\d+\.\s/m.test(roomContent);
+    if (snapshotHasStories && !roomHasStories) {
+      out[path] = snapshotContent;
+    }
+  }
   return out;
 }
 
