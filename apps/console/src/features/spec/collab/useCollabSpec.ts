@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import { listDocPaths } from "@aep/collab-doc";
@@ -87,13 +87,22 @@ export interface CollabSpec {
   flushError: string | null;
   /** Dismiss the flush-error banner. */
   clearFlushError: () => void;
-  /** Drop the local doc and rejoin so the server reseeds from git HEAD. */
-  resyncRoom: () => void;
+  /** Ask the server to seed anything committed to git that this room is still
+   *  missing (onboarding #702: an import commits straight to git, bypassing a
+   *  room that connected before it landed). A stateless round trip, not a
+   *  local teardown — existing Yjs entries, including any live unsaved edit,
+   *  are left exactly as they are. Resolves immediately when offline/solo
+   *  (nothing to fetch); rejects on a server error or timeout. */
+  resyncRoom: () => Promise<void>;
 }
 
 // A forced flush is one files/apply commit — quick, but allow slack for the
 // git op before the build is blocked on a hung reply.
 const FLUSH_TIMEOUT_MS = 30_000;
+// A resync is a read (list + read committed files), lighter than a flush's
+// commit — but still a round trip through the BFF, so it gets its own slack
+// rather than sharing the commit budget above.
+const RESYNC_TIMEOUT_MS = 15_000;
 
 // Settle time before rebuilding the room after a post-sync drop (see
 // `scheduleRebuild`). The fresh provider retries on its own backoff from
@@ -155,9 +164,12 @@ export function useCollabSpec(
   const pendingFlushes = useRef(
     new Map<string, { resolve: () => void; reject: (e: Error) => void }>(),
   );
-  const resyncRoom = useCallback(() => {
-    setEpoch((e) => e + 1);
-  }, []);
+  // In-flight resync requests (onboarding #702), same correlation-id shape as
+  // `pendingFlushes` — a resync is a stateless round trip too, not the local
+  // doc teardown `resyncRoom` used to be.
+  const pendingResyncs = useRef(
+    new Map<string, { resolve: () => void; reject: (e: Error) => void }>(),
+  );
 
   useEffect(() => {
     const doc = new Y.Doc();
@@ -169,6 +181,7 @@ export function useCollabSpec(
     // Stable across this effect — captured so the cleanup doesn't read a ref
     // that could have moved (react-hooks/exhaustive-deps).
     const flushes = pendingFlushes.current;
+    const resyncs = pendingResyncs.current;
 
     // A doc must never outlive the connection that filled it. The server
     // treats git as the durable truth: it unloads a room on last-leave and
@@ -326,7 +339,8 @@ export function useCollabSpec(
     };
     doc.on("afterAllTransactions", onDocChange);
 
-    // Stateless protocol: flush acks (#162), token push/pull (D6), flush-error UI.
+    // Stateless protocol: flush acks (#162), resync acks (onboarding #702),
+    // token push/pull (D6), flush-error UI.
     const onStateless = ({ payload }: { payload: string }) => {
       let msg: {
         type?: string;
@@ -371,6 +385,28 @@ export function useCollabSpec(
         return;
       }
 
+      if (msg.type === "resync-error") {
+        if (msg.id) {
+          const pending = pendingResyncs.current.get(msg.id);
+          if (pending) {
+            pendingResyncs.current.delete(msg.id);
+            pending.reject(new Error(msg.message ?? "Failed to resync the workspace."));
+          }
+        }
+        return;
+      }
+
+      if (msg.type === "resynced") {
+        if (msg.id) {
+          const pending = pendingResyncs.current.get(msg.id);
+          if (pending) {
+            pendingResyncs.current.delete(msg.id);
+            pending.resolve();
+          }
+        }
+        return;
+      }
+
       if (!msg.id) return;
       const pending = pendingFlushes.current.get(msg.id);
       if (!pending) return;
@@ -404,6 +440,10 @@ export function useCollabSpec(
       for (const p of flushes.values())
         p.reject(new Error("Collaboration session ended before the commit finished."));
       flushes.clear();
+      // Same for a resync caught mid-flight by an unmount or a rebuild.
+      for (const p of resyncs.values())
+        p.reject(new Error("Collaboration session ended before the resync finished."));
+      resyncs.clear();
       provider.destroy();
       doc.destroy();
       docRef.current = null;
@@ -418,7 +458,30 @@ export function useCollabSpec(
       version,
       flushError,
       clearFlushError: () => setFlushError(null),
-      resyncRoom,
+      resyncRoom: () =>
+        new Promise<void>((resolve, reject) => {
+          const provider = providerRef.current;
+          if (status !== "connected" || !provider) {
+            resolve(); // offline / solo — the local doc IS git, nothing to fetch
+            return;
+          }
+          const id = crypto.randomUUID();
+          const timer = setTimeout(() => {
+            pendingResyncs.current.delete(id);
+            reject(new Error("Timed out waiting for the workspace to resync."));
+          }, RESYNC_TIMEOUT_MS);
+          pendingResyncs.current.set(id, {
+            resolve: () => {
+              clearTimeout(timer);
+              resolve();
+            },
+            reject: (e) => {
+              clearTimeout(timer);
+              reject(e);
+            },
+          });
+          provider.sendStateless(JSON.stringify({ type: "resync", id }));
+        }),
       getFileText: (path: string) =>
         status === "connected"
           ? (docRef.current?.getMap<Y.Text>("files").get(path) ?? null)
@@ -481,6 +544,6 @@ export function useCollabSpec(
     // A rebuild always moves `status` (offline → connecting → connected), so
     // the refs are re-read and consumers holding a fragment from the discarded
     // doc are handed the new one. No `epoch` dependency is needed for that.
-    [status, peers, version, user.name, docReady, flushError, resyncRoom],
+    [status, peers, version, user.name, docReady, flushError],
   );
 }

@@ -923,7 +923,11 @@ export function SpecView({
   // handing the agent's own assumptions back as the user's answers.
   const awaitingAnswers = Boolean(roomQuestion && roomDoc);
   const canImportRequirements =
-    !hasRequirementsFiles && !deriving && !localTurnActivity && !awaitingAnswers;
+    !hasRequirementsFiles &&
+    !deriving &&
+    !localTurnActivity &&
+    !awaitingAnswers &&
+    !agentBusy;
   // A lens fired while the agent already holds the turn would be refused by the
   // composer anyway, and firing one mid-interview supersedes the live question
   // form for the whole room — so the lenses go inert for the same two reasons
@@ -1771,7 +1775,7 @@ export function SpecView({
         open={importRequirementsOpen}
         onClose={() => setImportRequirementsOpen(false)}
         projectName={projectName}
-        onImported={() => collab.resyncRoom()}
+        onImported={() => void collab.resyncRoom()}
       />
 
       <ResolveDependenciesDialog
