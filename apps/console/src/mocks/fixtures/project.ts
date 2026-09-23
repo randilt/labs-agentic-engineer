@@ -1,7 +1,7 @@
 import type { components } from "../../generated/aep-api";
 import { taskUsage } from "./usage";
 import {
-  DEFAULT_VALIDATION_CRITERIA,
+  DEFAULT_ACCEPTANCE_FEATURES,
   DEFAULT_VALIDATION_REPORT,
 } from "./validation";
 
@@ -87,7 +87,7 @@ const noDeploy: DeployStage = {
  * selected, exactly as the validation override does, rather than adding rungs
  * to a ladder twelve fixture records are keyed on.
  */
-export const TRACK_SCENARIOS = ["amending", "drifting", "build-failed"] as const;
+export const TRACK_SCENARIOS = ["amending", "drifting", "build-failed", "on-hold"] as const;
 
 export type TrackScenario = (typeof TRACK_SCENARIOS)[number];
 
@@ -123,6 +123,14 @@ export const trackOverrides: Record<TrackScenario, TrackAggregates> = {
       validation: "passed",
     },
   },
+  // Parked at the deploy gate (ADR-0032, artboard 9c): the version built and
+  // nothing deployed, because a person still owes stripe its values. The run
+  // story for it is `heldRun` — the runs handler serves it under this track.
+  "on-hold": {
+    spec: { exists: true, version: "v1", dirty: false, design: true, agent: "" },
+    build: { version: "v1", status: "running" },
+    deploy: noDeploy,
+  },
 };
 
 export const projectStatuses: Record<
@@ -141,7 +149,6 @@ export const projectStatuses: Record<
     hasDesign: false,
     hasTasks: false,
     specStatus: "pending",
-    designStatus: "pending",
     spec: { ...noSpec, agent: "working" },
     build: idleBuild,
     deploy: noDeploy,
@@ -155,7 +162,6 @@ export const projectStatuses: Record<
     hasDesign: true,
     hasTasks: false,
     specStatus: "draft",
-    designStatus: "in_progress",
     spec: { exists: true, version: "", dirty: false, design: true, agent: "" },
     build: idleBuild,
     deploy: noDeploy,
@@ -172,7 +178,6 @@ export const projectStatuses: Record<
     hasDesign: false,
     hasTasks: false,
     specStatus: "failed",
-    designStatus: "",
     spec: { ...noSpec, agent: "failed" },
     build: idleBuild,
     deploy: noDeploy,
@@ -186,7 +191,6 @@ export const projectStatuses: Record<
     hasDesign: false,
     hasTasks: false,
     specStatus: "failed",
-    designStatus: "failed",
     spec: { exists: true, version: "", dirty: false, design: false, agent: "" },
     build: idleBuild,
     deploy: noDeploy,
@@ -201,7 +205,6 @@ export const projectStatuses: Record<
     hasDesign: true,
     hasTasks: false,
     specStatus: "approved",
-    designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: false, design: true, agent: "" },
     build: {
       version: "v1",
@@ -218,7 +221,6 @@ export const projectStatuses: Record<
     hasDesign: true,
     hasTasks: false,
     specStatus: "approved",
-    designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: false, design: true, agent: "" },
     build: {
       version: "v1",
@@ -240,7 +242,6 @@ export const projectStatuses: Record<
     hasDesign: true,
     hasTasks: false,
     specStatus: "approved",
-    designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: true, design: true, agent: "" },
     build: {
       version: "v1",
@@ -264,7 +265,6 @@ export const projectStatuses: Record<
     hasDesign: true,
     hasTasks: false,
     specStatus: "approved",
-    designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: false, design: true, agent: "" },
     build: {
       version: "v1",
@@ -287,7 +287,6 @@ export const projectStatuses: Record<
     hasDesign: false,
     hasTasks: false,
     specStatus: "pending",
-    designStatus: "pending",
     spec: noSpec,
     build: idleBuild,
     deploy: noDeploy,
@@ -332,6 +331,14 @@ const deployedComponents: ComponentList = builtComponents;
 // component). Per component × scenario; components absent from a scenario
 // render as greyed "Not deployed" cards on the board, and the distinguished
 // status "Undeployed" marks an intentional spec.state == Undeploy binding.
+//
+// Every binding names `development` — the FIRST environment of the pipeline
+// `*/api/v1/dependencies/environments` serves (fixtures/marketplace.ts,
+// `seedOrgEnvironments`: development -> staging-local). The Deployments board
+// groups bindings by environment name and then walks that served list, so a
+// binding named anything the list does not carry lands in no row at all: the
+// board draws environment cards with nothing on them. Keep the two halves
+// spelled the same.
 const deploymentsByScenario: Partial<
   Record<
     Exclude<ProjectScenario, "error">,
@@ -344,9 +351,9 @@ const deploymentsByScenario: Partial<
   deploying: {
     storefront: [
       {
-        name: "demo-shop-storefront-default",
+        name: "demo-shop-storefront-development",
         componentName: "storefront",
-        environment: "default",
+        environment: "development",
         status: "Progressing",
         releaseName: "demo-shop-storefront-a1b2c3",
         createdAt: "2026-07-12T05:04:00Z",
@@ -354,9 +361,9 @@ const deploymentsByScenario: Partial<
     ],
     "catalog-api": [
       {
-        name: "demo-shop-catalog-api-default",
+        name: "demo-shop-catalog-api-development",
         componentName: "catalog-api",
-        environment: "default",
+        environment: "development",
         status: "Ready",
         releaseName: "demo-shop-catalog-api-d4e5f6",
         endpointUrl: "https://catalog-api.dev.acme-aep.io",
@@ -365,9 +372,9 @@ const deploymentsByScenario: Partial<
     ],
     "orders-api": [
       {
-        name: "demo-shop-orders-api-default",
+        name: "demo-shop-orders-api-development",
         componentName: "orders-api",
-        environment: "default",
+        environment: "development",
         createdAt: "2026-07-12T05:05:30Z",
       },
     ],
@@ -375,9 +382,9 @@ const deploymentsByScenario: Partial<
   deployed: {
     storefront: [
       {
-        name: "demo-shop-storefront-default",
+        name: "demo-shop-storefront-development",
         componentName: "storefront",
-        environment: "default",
+        environment: "development",
         status: "Ready",
         releaseName: "demo-shop-storefront-a1b2c3",
         endpointUrl: "https://storefront.dev.acme-aep.io",
@@ -386,9 +393,9 @@ const deploymentsByScenario: Partial<
     ],
     "catalog-api": [
       {
-        name: "demo-shop-catalog-api-default",
+        name: "demo-shop-catalog-api-development",
         componentName: "catalog-api",
-        environment: "default",
+        environment: "development",
         status: "Ready",
         releaseName: "demo-shop-catalog-api-d4e5f6",
         endpointUrl: "https://catalog-api.dev.acme-aep.io",
@@ -399,9 +406,9 @@ const deploymentsByScenario: Partial<
     // all-settled while still showing the Undeployed chip.
     "orders-api": [
       {
-        name: "demo-shop-orders-api-default",
+        name: "demo-shop-orders-api-development",
         componentName: "orders-api",
-        environment: "default",
+        environment: "development",
         status: "Undeployed",
         createdAt: "2026-07-12T05:01:00Z",
       },
@@ -410,9 +417,9 @@ const deploymentsByScenario: Partial<
   "deploy-failed": {
     storefront: [
       {
-        name: "demo-shop-storefront-default",
+        name: "demo-shop-storefront-development",
         componentName: "storefront",
-        environment: "default",
+        environment: "development",
         status: "ReleaseFailed",
         releaseName: "demo-shop-storefront-a1b2c3",
         createdAt: "2026-07-12T05:04:00Z",
@@ -420,9 +427,9 @@ const deploymentsByScenario: Partial<
     ],
     "catalog-api": [
       {
-        name: "demo-shop-catalog-api-default",
+        name: "demo-shop-catalog-api-development",
         componentName: "catalog-api",
-        environment: "default",
+        environment: "development",
         status: "Ready",
         releaseName: "demo-shop-catalog-api-d4e5f6",
         endpointUrl: "https://catalog-api.dev.acme-aep.io",
@@ -433,9 +440,9 @@ const deploymentsByScenario: Partial<
     // mid-rollout picture (error + success + transitional).
     "orders-api": [
       {
-        name: "demo-shop-orders-api-default",
+        name: "demo-shop-orders-api-development",
         componentName: "orders-api",
-        environment: "default",
+        environment: "development",
         status: "Progressing",
         releaseName: "demo-shop-orders-api-g7h8i9",
         createdAt: "2026-07-12T05:01:00Z",
@@ -976,6 +983,45 @@ const waitingRun: BuildRunList = {
   milestoneNumber: 1,
   runs: [milestoneRun({ state: "waiting" })],
 };
+// A run parked at the DEPLOY GATE: it built, reached the gate short of stripe's
+// values, and stopped in `waiting` naming what it waits on — the state the
+// Deployments board reads as "on hold" (ADR-0032). Served under the `on-hold`
+// track override, whichever project scenario is selected.
+export const heldRun: BuildRunList = {
+  tag: "v1",
+  milestoneNumber: 1,
+  runs: [
+    milestoneRun({
+      state: "waiting",
+      waitingReason: "external-values",
+      blockingDependencies: ["stripe"],
+    }),
+  ],
+};
+
+/**
+ * `heldRun` stamped with THIS tag's identity — envelope, run id, milestone —
+ * the way `buildRunsForTag` stamps every other story, so a v2 or v3 asked for
+ * under the `on-hold` track does not answer with a run that calls itself v1.
+ */
+export function heldRunForTag(
+  s: Exclude<ProjectScenario, "error">,
+  tag: string,
+): BuildRunList {
+  const known = (projectBuilds[s].builds ?? []).find((b) => b.tag === tag);
+  const milestoneNumber = known?.milestoneNumber ?? heldRun.milestoneNumber;
+  return {
+    ...heldRun,
+    tag,
+    milestoneNumber,
+    runs: (heldRun.runs ?? []).map((run, i) => ({
+      ...run,
+      id: `run-${tag}-${i + 1}`,
+      milestoneNumber,
+      milestoneTitle: tag,
+    })),
+  };
+}
 // A run that SELF-HEALED: its first validation attempt failed, the platform filed
 // the failed criterion as ordinary work, a coding cycle repaired it, and the second
 // attempt came back clean. Four cycles — coding, validation, coding, validation —
@@ -1014,7 +1060,7 @@ const settledRun: BuildRunList = {
       validation: {
         verdict: "partial",
         issue: 30,
-        reportPath: "tests/validation/report.json",
+        reportPath: "tests/acceptance/report.json",
       },
       cycles: [
         {
@@ -1404,34 +1450,91 @@ sequenceDiagram
 `;
 
 // The security design (#665): ONE document, and the Security rail entry reads
-// it alone. The roles it declares are the ones `fixtures/roles.ts` reconciles
-// against — `Compliance Admin` exists on the directory, `Viewer` does not yet
-// ("New at Build") — so the panel's live half has something to disagree with.
+// it alone. v2 — a permission catalog the roles grant from.
+//
+// Shaped on the canonical Expense Tracker fixture
+// (`packages/agent-stream/test/fixtures/security/expense-tracker.json`) and
+// renamed onto this project's own components, so the mock exercises the same
+// matrix the design pictures: two resources on two components, an own/any
+// split, a `read-all` widener, and one action (`catalog:export`) no role grants
+// — the matrix's "granted by nobody" row.
+//
+// Every state the Security page can reach is reachable from here, because none
+// of them is reachable on demand against a real identity provider:
+//
+//  - the three group badges, against `fixtures/roles.ts`: `Compliance` is
+//    absent from the live catalog ("New at Build"), `Administrators` is there
+//    but not the platform's ("Not ours"), `Finance` is the platform's and holds
+//    roles in two projects ("Reused");
+//  - `Shopper` is SELF-SERVICE — a user-kind column that is still a column, with
+//    no group and no promised login;
+//  - `Viewer` names no test user, so the panel promises `test-viewer` and the
+//    live half agrees;
+//  - `jsmith` holds TWO roles, which is what v2 changed;
+//  - `ledger-sync` is SERVICE-kind — no login, no group, its own list.
 const securityJson = `{
-  "version": 1,
-  "coldStartRole": "Compliance Admin",
-  "publicComponents": ["storefront"],
-  "roles": [
+  "version": 3,
+  "permissions": [
     {
-      "name": "Compliance Admin",
-      "description": "Approves and audits submitted claims.",
-      "stories": [1, 2],
-      "grantedBy": "Platform IdP",
-      "permissions": [
-        { "component": "orders-api", "actions": ["approve", "refund"] },
-        { "component": "storefront", "screens": ["Orders", "Audit log"] }
+      "resource": "orders",
+      "component": "orders-api",
+      "description": "Customer orders and the money moved against them",
+      "actions": [
+        { "handle": "read", "description": "See own orders" },
+        { "handle": "read-all", "description": "See every order" },
+        { "handle": "place", "description": "Place an order" },
+        { "handle": "approve", "description": "Approve a held order" },
+        { "handle": "refund", "description": "Refund a paid order" }
       ]
     },
     {
-      "name": "Viewer",
-      "description": "Reads the catalog and their own order history.",
-      "stories": [3],
-      "grantedBy": "Platform IdP",
-      "permissions": [{ "component": "catalog-api", "actions": ["read"] }]
+      "resource": "catalog",
+      "component": "catalog-api",
+      "description": "The product catalogue",
+      "actions": [
+        { "handle": "read", "description": "Browse the product catalogue" },
+        { "handle": "export", "description": "Download the catalogue as CSV" }
+      ]
     }
   ],
-  "testUsers": [{ "username": "test-compliance-admin", "role": "Compliance Admin" }],
-  "thunder": { "name": "demo-shop", "type": "browser" }
+  "groups": [
+    { "name": "Compliance", "description": "People who audit and approve orders" }
+  ],
+  "roles": [
+    {
+      "name": "Shopper",
+      "description": "Browses the catalogue and follows their own orders.",
+      "stories": [1, 2],
+      "grants": ["catalog:read", "orders:read", "orders:place"],
+      "enrolment": "self-service"
+    },
+    {
+      "name": "Compliance Admin",
+      "description": "Approves held orders, refunds paid ones and audits the rest.",
+      "stories": [3, 7],
+      "grants": ["orders:read", "orders:read-all", "orders:approve", "orders:refund"],
+      "assignTo": ["Compliance", "Administrators"],
+      "assignableBy": ["Compliance Admin"]
+    },
+    {
+      "name": "Viewer",
+      "description": "Reads the catalogue and every order, and changes nothing.",
+      "stories": [4],
+      "grants": ["catalog:read", "orders:read", "orders:read-all"],
+      "assignTo": ["Finance"]
+    },
+    {
+      "name": "ledger-sync",
+      "description": "Reconciles paid orders against the ledger nightly, with nobody signed in.",
+      "stories": [9],
+      "kind": "service",
+      "grants": ["orders:read-all"]
+    }
+  ],
+  "testUsers": [
+    { "username": "test-compliance-admin", "roles": ["Compliance Admin"] },
+    { "username": "jsmith", "roles": ["Compliance Admin", "Shopper"] }
+  ]
 }
 `;
 
@@ -1603,12 +1706,11 @@ const fullFiles: MockSpecFile[] = [
     path: "specs/design/components/orders-api/design.json",
     content: ordersApiDesignJson,
   },
-  {
-    path: "specs/validation/validation-criteria.json",
-    content: DEFAULT_VALIDATION_CRITERIA,
-  },
+  // One file per capability, which is what the acceptance skill authors and what
+  // the Validations page reads back as a set.
+  ...DEFAULT_ACCEPTANCE_FEATURES,
   // Runner artifact outside specs/ — reachable via the read-file allow-list.
-  { path: "tests/validation/report.json", content: DEFAULT_VALIDATION_REPORT },
+  { path: "tests/acceptance/report.json", content: DEFAULT_VALIDATION_REPORT },
 ];
 
 export const projectSpecFiles: Record<

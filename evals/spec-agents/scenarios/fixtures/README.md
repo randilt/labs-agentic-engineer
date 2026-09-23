@@ -10,7 +10,19 @@ drift.
   `req-lunch-coordinator` run (2026-08-02), curated: Slack open/cutoff
   notifications moved from out-of-scope into Functional Requirements #9 (the
   interview had not elicited them; the brief wants them).
+- `expense-tracker-requirements/` — the Expense Tracker PRD from the
+  generated-app scopes design (its P6 spec bundle,
+  `docs/design/draft/spikes/artifacts/p6-project/`), not a captured run: two
+  actors, seven numbered stories, and an own-rows-vs-every-row permission
+  split, so the design section's security step has something to catalog.
 - `lunch-coordinator-design/` — design output of the `design-lunch-coordinator`
   run (2026-08-02, pass band 93), frozen as produced: `lunch-api` +
   `lunch-webapp` components with design.json / openapi.yaml / wireframes,
   design.cell, and validation-criteria.json.
+- `legacy-expense-requirements/` — hand-authored to the `modernize-extract`
+  bundle shape (not a captured run — there is no legacy repo to run the
+  skill against): a requirements-only import for the `design/legacy-expense`
+  scenario, so the design step has an imported bundle to design from instead
+  of an interview. `business-rules.md` carries an "Approval escalation" rule
+  with a `Logic` block (pseudocode) demonstrating the shape a non-trivial
+  rule takes beyond a plain When/Then.

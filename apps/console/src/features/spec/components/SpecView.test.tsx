@@ -102,6 +102,7 @@ const soloCollab = () => ({
   flush: mockFlush,
   flushError: null as string | null,
   clearFlushError: vi.fn(),
+  resyncRoom: vi.fn().mockResolvedValue(undefined),
 });
 let mockCollab = soloCollab();
 vi.mock("../collab/useCollabSpec", () => ({
@@ -269,18 +270,50 @@ vi.mock("../api/queries", () => ({
   useSpecFileContent: (...args: unknown[]) => mockUseSpecFileContent(...args),
   useDesignDependencies: (...args: unknown[]) =>
     mockUseDesignDependencies(...args),
+  useImportRequirements: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  }),
+}));
+
+vi.mock("./ImportRequirementsDialog", () => ({
+  ImportRequirementsDialog: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="import-requirements-dialog" /> : null,
 }));
 
 // The Security entry's own wiring. Stubbed like every other query here: these
 // tests render SpecView without a QueryClientProvider, and the hook's and the
-// panel's behavior are covered by their own tests.
+// panel's behavior are covered by their own tests. Delegated through a vi.fn()
+// so the block below can hand the page a real document and assert what this
+// view threads INTO the panel.
+const mockUseSecurityEntry = vi.fn();
 vi.mock("../hooks/useSecurityEntry", () => ({
-  useSecurityEntry: () => ({
-    securityJson: null,
-    live: undefined,
-    isPending: false,
-    isError: false,
-  }),
+  useSecurityEntry: (...args: unknown[]) => mockUseSecurityEntry(...args),
+}));
+
+// The acceptance entry reads N documents through useQueries, and these tests
+// render with no QueryClientProvider — the same reason useSecurityEntry is
+// stubbed. `mockAcceptance` is settable so a test can hand the pane a document
+// set; the hook's own reading is covered in useAcceptanceEntry.test.tsx.
+let mockAcceptance: {
+  features: { path: string; content: string }[];
+  isPending: boolean;
+  isError: boolean;
+} = { features: [], isPending: false, isError: false };
+vi.mock("../hooks/useAcceptanceEntry", () => ({
+  useAcceptanceEntry: () => mockAcceptance,
+}));
+
+// What the API view is decorated with — the catalog's granting roles and the
+// project's resource server. Stubbed for the same reason (it reads the spec
+// tree and the platform's role record through react-query); the assertions
+// below are about what this view hands the API renderer.
+const mockUseApiViewSecurity = vi.fn();
+vi.mock("../hooks/useApiViewSecurity", () => ({
+  useApiViewSecurity: (...args: unknown[]) => mockUseApiViewSecurity(...args),
 }));
 
 // A preflight that reports something but blocks nothing: config values are
@@ -382,6 +415,16 @@ beforeEach(() => {
     isPending: false,
     isError: false,
     error: null,
+  });
+  mockUseSecurityEntry.mockReturnValue({
+    securityJson: null,
+    live: undefined,
+    isPending: false,
+    isError: false,
+  });
+  mockUseApiViewSecurity.mockReturnValue({
+    roles: undefined,
+    resourceServer: undefined,
   });
 });
 
@@ -918,6 +961,47 @@ describe("SpecView onBuild routing (#164)", () => {
     ).toBeInTheDocument();
   });
 
+  // The preflight diffs names against the last tag, so it calls a copy of a
+  // Registered External resource `new` like anything else. The design read
+  // model is what knows better, and the dialog takes it from there.
+  it("says an external that reuses a registered resource is reused, not new", async () => {
+    mockUseDesignDependencies.mockReturnValue({
+      data: [
+        {
+          componentName: "checkout-api",
+          dependencies: [
+            {
+              kind: "external",
+              name: "currency-service",
+              status: "resolved",
+              source: "org",
+              resourceRef: "currency-service",
+            },
+          ],
+        },
+      ],
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    mockPreflightRefetch.mockResolvedValue({
+      data: ready({
+        changes: [
+          { name: "currency-service", kind: "external", state: "new" },
+          { name: "reports-web", kind: "component", state: "new" },
+        ],
+      }),
+    });
+
+    render(<SpecView projectName="proj1" />);
+    clickBuild();
+
+    const dialog = await screen.findByTestId("start-build-dialog");
+    expect(within(dialog).getByText("reused · organization")).toBeInTheDocument();
+    // The component beside it is still new.
+    expect(within(dialog).getByText("new")).toBeInTheDocument();
+  });
+
   // `tag` is optional on BuildResponse, so the version page it names may not
   // exist. The ledger is the honest fallback — never the overview, which is
   // where a reader would have to leave to reach either.
@@ -1227,6 +1311,72 @@ describe("SpecView — a document linked from the chat", () => {
   });
 });
 
+// `?import=requirements` (ADR-0020) is the same one-shot shape: open the
+// dialog once, then strip the param so a reload after the user closes it (or
+// completes the import) does not reopen it.
+describe("SpecView — import requirements on arrival", () => {
+  it("opens the dialog once and strips only the import param", async () => {
+    render(<SpecView projectName="proj1" openImportOnMount />);
+
+    expect(
+      await screen.findByTestId("import-requirements-dialog"),
+    ).toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "/projects/$projectName/spec",
+        params: { projectName: "proj1" },
+        search: expect.any(Function),
+        replace: true,
+      }),
+    );
+
+    // The updater strips `import` alone — a `generate`/`view`/`file` param
+    // arriving alongside it (or set afterward) must survive the strip.
+    const call = mockNavigate.mock.calls.find(
+      ([arg]) => arg?.to === "/projects/$projectName/spec",
+    );
+    const search = call?.[0].search as (prev: Record<string, unknown>) => Record<string, unknown>;
+    expect(search({ import: "requirements", generate: "design" })).toEqual({
+      generate: "design",
+    });
+  });
+});
+
+// canImportRequirements gates the header's Import requirements launcher —
+// BASE_FILES carries no requirements group entry, so these start from the
+// same "nothing imported yet" state the dialog-on-arrival tests above do.
+//
+// A project name of its own, not "proj1": `useLocalTurnActivity`'s claims
+// (chatStore.ts) are real module-level state keyed by (org, project), live
+// for the whole test-file run rather than reset per test — sharing "proj1"
+// with the file's many send/dispatch tests risks reading a stale claim this
+// describe block never took.
+describe("SpecView — Import requirements launcher visibility", () => {
+  it("shows the launcher once idle with no requirements yet", () => {
+    render(<SpecView projectName="proj-import-gate" />);
+    expect(
+      screen.getByRole("button", { name: "Import requirements" }),
+    ).toBeInTheDocument();
+  });
+
+  // An agent joining the room (a chat turn, a dependency lens, anything) must
+  // hide the launcher exactly like it disables Re-generate design beside it —
+  // opening the dialog mid-turn would only hit the server's own
+  // requireNoActiveTurn refusal, but the room-peer signal here can lead the
+  // turn-status query by a beat, so the button should not dangle in front of
+  // the user for that window.
+  it("hides the launcher while an agent is in the room", () => {
+    mockCollab = {
+      ...mockCollab,
+      peers: [{ clientId: 1, name: "Agent", color: "#000", kind: "agent" }],
+    };
+    render(<SpecView projectName="proj-import-gate" />);
+    expect(
+      screen.queryByRole("button", { name: "Import requirements" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("SpecView resolve dependencies dialog (#252 Task 10)", () => {
   const OPEN_DEPENDENCY: PreflightItem[] = [
     {
@@ -1435,6 +1585,22 @@ describe("SpecView follows the write (#576, ADR-0026)", () => {
       planTurnEnded(chatKey, "t1", "failed");
     });
     expect(screen.queryByText(/Waiting for the agent to write/)).not.toBeInTheDocument();
+  });
+
+  // The follow is the ONE way a hidden document could still name itself. The
+  // design turn mints the retired validation criteria on every project and the
+  // spec view drops the path everywhere else (mapping.ts) — but the follow takes
+  // its path from the plan, not from the file list, so without a guard the pane
+  // announced "Waiting for the agent to write Validation criteria…" mid-turn:
+  // the one document just hidden, named, with no row to go back to.
+  it("does not follow a write into a document the view hides", () => {
+    render(<SpecView projectName="proj1" />);
+    act(() => {
+      planDeclared(chatKey, "t1", ["specs/validation/validation-criteria.json"]);
+      planFileWriting(chatKey, "t1", "specs/validation/validation-criteria.json");
+    });
+    expect(screen.queryByText(/Waiting for the agent to write/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Validation criteria/)).not.toBeInTheDocument();
   });
 
   it("a new turn resets to following", () => {
@@ -1811,6 +1977,10 @@ describe("designWarningIntro", () => {
 // the only sentence in the product that said what criteria were for lived on the
 // Validations page's empty state. This is the surface that gap was reported
 // against, so the description's presence here is the change's real coverage.
+// The criteria document is HIDDEN from the spec view (mapping.ts): nothing the
+// app produces can select it any more, so these reach `ValidationView` only
+// because they mock `useSpecFiles` directly. They stand with the renderer, until
+// the criteria+e2e path is removed and both go together.
 describe("SpecView validation criteria explanation", () => {
   const CRITERIA_JSON = JSON.stringify({
     requirements: [
@@ -1905,5 +2075,353 @@ describe("SpecView validation criteria explanation", () => {
     expect(screen.getByText("b")).toBeInTheDocument();
     expect(screen.queryByText("AC-001-a")).not.toBeInTheDocument();
     expect(screen.queryByText("REQ-001")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// What this view hands the Security page and the API view
+// ---------------------------------------------------------------------------
+//
+// Both panels render facts that live OUTSIDE the document they are given —
+// which components provision sign-in, which roles grant a scope, which audience
+// the scopes are on. The panels' own tests prove they render them; only a test
+// here proves this view actually hands them over, which is exactly the step
+// that was missing.
+
+const SECURITY_PATH = "specs/design/security.json";
+const ORDERS_OPENAPI_PATH = "specs/design/components/orders-api/openapi.yaml";
+
+/** A minimal v2 catalog: one resource, one action, one role. */
+const SECURITY_DOC = JSON.stringify(
+  {
+    version: 3,
+    permissions: [
+      {
+        resource: "orders",
+        component: "orders-api",
+        actions: [
+          { handle: "read", description: "See own orders" },
+        ],
+      },
+    ],
+    groups: [],
+    roles: [
+      {
+        name: "Shopper",
+        description: "Buys things",
+        stories: [1],
+        grants: ["orders:read"],
+      },
+    ],
+    testUsers: [],
+  },
+  null,
+  2,
+);
+
+const ORDERS_OPENAPI = `openapi: 3.0.3
+info:
+  title: Orders API
+  version: 1.0.0
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows: {}
+security:
+  - oauth2: []
+paths:
+  /orders:
+    get:
+      summary: List orders
+      security:
+        - oauth2: ["orders:read"]
+      responses:
+        "200":
+          description: ok
+`;
+
+describe("SpecView — the Security page's architecture facts", () => {
+  beforeEach(() => {
+    mockUseSpecFiles.mockReturnValue({
+      // The rail shows its Design section once the design has any document in
+      // it, so the overview row rides along to put the Security row on screen.
+      data: [
+        { path: "specs/design/overview.md", sha: "def", group: "designs" },
+        { path: SECURITY_PATH, sha: "abc", group: "designs" },
+      ],
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockUseSecurityEntry.mockReturnValue({
+      securityJson: SECURITY_DOC,
+      live: undefined,
+      isPending: false,
+      isError: false,
+    });
+    mockUseDesignDependencies.mockReturnValue({
+      data: [
+        {
+          componentName: "orders-api",
+          dependencies: [
+            {
+              kind: "platform-resource",
+              name: "sign-in",
+              resourceType: "thunder-app",
+            },
+          ],
+        },
+        { componentName: "public-site", dependencies: [] },
+      ],
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+  });
+
+  function openSecurity() {
+    render(<SpecView projectName="proj1" />);
+    fireEvent.click(screen.getByText("Security"));
+  }
+
+  // The row exists only because this view passes `dependencies` down; without
+  // the thread the panel has nothing to derive it from and omits the row.
+  it("names the components that provision no sign-in at all", () => {
+    openSecurity();
+
+    const row = screen.getByText("No sign-in at all").closest("tr")!;
+    // Named as a COMPONENT, the way the rows above name an operation or a
+    // screen — the sub-header they share cannot say it for all three.
+    expect(within(row).getByText("component public-site")).toBeInTheDocument();
+    expect(within(row).queryByText(/orders-api/)).not.toBeInTheDocument();
+  });
+
+  it("omits that row while the dependency read has not answered", () => {
+    mockUseDesignDependencies.mockReturnValue({
+      data: undefined,
+      isPending: true,
+      isError: false,
+      error: null,
+    });
+    openSecurity();
+
+    // No row and no sub-header: the baseline exists only to name an exposure,
+    // and an unanswered read has none to name. The grid itself still renders.
+    const grid = screen.getByRole("table");
+    expect(within(grid).queryByText("No sign-in at all")).not.toBeInTheDocument();
+    expect(
+      within(grid).queryByText("Reachable without a permission"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("draws nothing when every component provisions sign-in", () => {
+    mockUseDesignDependencies.mockReturnValue({
+      data: [
+        {
+          componentName: "orders-api",
+          dependencies: [
+            {
+              kind: "platform-resource",
+              name: "sign-in",
+              resourceType: "thunder-app",
+            },
+          ],
+        },
+      ],
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    openSecurity();
+
+    expect(screen.queryByText("Reachable without a permission")).not.toBeInTheDocument();
+    expect(screen.queryByText("No sign-in at all")).not.toBeInTheDocument();
+  });
+});
+
+describe("SpecView — the API view's granting roles and audience", () => {
+  beforeEach(() => {
+    mockUseSpecFiles.mockReturnValue({
+      data: [{ path: ORDERS_OPENAPI_PATH, sha: "abc", group: "designs" }],
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockUseSpecFileContent.mockReturnValue({
+      data: { sha: "abc", content: ORDERS_OPENAPI },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockUseApiViewSecurity.mockReturnValue({
+      roles: { "orders:read": { roles: ["Shopper"], note: "filtered by caller" } },
+      resourceServer: "https://aep.wso2.com/orgs/acme/projects/shop",
+    });
+  });
+
+  it("reads the catalog only while a contract is the selection", () => {
+    render(<SpecView projectName="proj1" />);
+
+    expect(mockUseApiViewSecurity).toHaveBeenLastCalledWith(
+      expect.objectContaining({ projectName: "proj1", active: true }),
+    );
+  });
+
+  it("names the roles that grant an operation's scope", () => {
+    render(<SpecView projectName="proj1" />);
+
+    expect(screen.getByText("orders:read")).toBeInTheDocument();
+    expect(screen.getByText("Shopper · filtered by caller")).toBeInTheDocument();
+  });
+
+  it("names the audience the scopes are granted on", () => {
+    render(<SpecView projectName="proj1" />);
+
+    expect(
+      screen.getByText("aud https://aep.wso2.com/orgs/acme/projects/shop"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the contract unchanged when the platform knows neither", () => {
+    mockUseApiViewSecurity.mockReturnValue({
+      roles: undefined,
+      resourceServer: undefined,
+    });
+    render(<SpecView projectName="proj1" />);
+
+    expect(screen.getByText("Orders API")).toBeInTheDocument();
+    expect(screen.queryByText(/^aud /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Shopper/)).not.toBeInTheDocument();
+  });
+});
+
+// A `.feature` file is neither `.md` nor one of the structured JSON/YAML types, so
+// before this it fell through the whole branch tree to CollabTextArea: an editable
+// monospace box over a document nobody edits by hand. That is exactly the
+// dishonesty CommittedFileView's doc comment says was fixed for every other type.
+describe("SpecView acceptance criteria", () => {
+  const FEATURE = [
+    "Feature: Bought items",
+    "",
+    "  @story-6",
+    "  Rule: A bought item is locked from further edits",
+    "",
+    "    @negative",
+    "    Scenario: Editing a bought item is refused",
+    '      Given the shared list has a bought item named "Eggs"',
+    '      When Dev tries to change the quantity of "Eggs" to "2"',
+    '      Then the quantity of "Eggs" is still "1"',
+  ].join("\n");
+
+  const ADDING = [
+    "Feature: Adding items",
+    "",
+    "  @story-2",
+    "  Rule: An item is added with a name and a quantity",
+    "",
+    "    Scenario: Adding a new item",
+    '      When Priya adds "Milk"',
+    '      Then the list shows "Milk"',
+  ].join("\n");
+
+  beforeEach(() => {
+    mockUseSpecFiles.mockReturnValue({
+      data: [
+        { path: "specs/acceptance/adding-items.feature", sha: "a", group: "validation" },
+        { path: "specs/acceptance/bought-items.feature", sha: "b", group: "validation" },
+      ],
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockAcceptance = {
+      features: [
+        { path: "specs/acceptance/adding-items.feature", content: ADDING },
+        { path: "specs/acceptance/bought-items.feature", content: FEATURE },
+      ],
+      isPending: false,
+      isError: false,
+    };
+  });
+
+  // One rail entry for the set, so the reader picks the pane and then searches
+  // it — rather than picking the right file and then searching that.
+  function openAcceptance() {
+    render(<SpecView projectName="proj1" />);
+    fireEvent.click(screen.getByText("Acceptance criteria"));
+  }
+
+  it("lists every capability under one entry", () => {
+    openAcceptance();
+
+    expect(screen.getByText("Bought items")).toBeInTheDocument();
+    expect(screen.getByText("Adding items")).toBeInTheDocument();
+    // The rail carries the entry, not the capabilities: each name appears once,
+    // in the pane.
+    expect(screen.getAllByText("Bought items")).toHaveLength(1);
+  });
+
+  it("renders the structure as a document, not the file as editable text", () => {
+    openAcceptance();
+
+    expect(screen.getByText("A bought item is locked from further edits")).toBeInTheDocument();
+    expect(screen.getByText("Editing a bought item is refused")).toBeInTheDocument();
+    // The document takes no typing: CollabTextArea rendered it as a multiline
+    // field, so a textarea anywhere on the pane is the regression.
+    expect(document.querySelector("textarea")).toBeNull();
+    // The one input is the view's own filter, which edits nothing.
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    expect(screen.getByRole("textbox")).toHaveAccessibleName("Filter scenarios");
+  });
+
+  // The point of collapsing the rail: one search now reaches every capability.
+  it("filters across capabilities, which per-file rows could not", () => {
+    openAcceptance();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Filter scenarios" }), {
+      target: { value: "milk" },
+    });
+    expect(screen.getByText("Adding a new item")).toBeInTheDocument();
+    expect(screen.queryByText("Editing a bought item is refused")).not.toBeInTheDocument();
+  });
+
+  it("opens a scenario's steps on a click, and not before", () => {
+    const step = (text: string) => (_: string, el: Element | null) =>
+      el?.tagName === "SPAN" && el.textContent === text;
+    const when = 'Dev tries to change the quantity of "Eggs" to "2"';
+
+    openAcceptance();
+
+    expect(screen.queryByText(step(when))).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Editing a bought item is refused"));
+    expect(screen.getByText(step(when))).toBeInTheDocument();
+  });
+
+  it("marks a refusal with its tag", () => {
+    openAcceptance();
+
+    expect(screen.getAllByText("@negative").length).toBeGreaterThan(0);
+  });
+
+  it("waits rather than claiming the criteria are empty", () => {
+    mockAcceptance = { features: [], isPending: true, isError: false };
+    openAcceptance();
+
+    expect(
+      screen.getByRole("progressbar", { name: "Loading the acceptance criteria" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No acceptance criteria yet")).not.toBeInTheDocument();
+  });
+
+  it("says the criteria have not been written when nothing is in flight", () => {
+    mockAcceptance = { features: [], isPending: false, isError: false };
+    openAcceptance();
+
+    expect(screen.getByText("No acceptance criteria yet")).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 ---
 name: design
-description: Use when generating a project's design from its PRD — the /design flow that turns specs/requirements/prd.md into the cell-first design under specs/design/, then mints the validation criteria. Also the flow for converging an existing design onto an amended PRD.
+description: Use when generating a project's design from its requirements corpus — the /design flow that turns specs/requirements/ (prd.md plus supporting documents) into the cell-first design under specs/design/, then mints the validation criteria. Also the flow for converging an existing design onto an amended PRD.
 metadata:
   aep:
     kind: platform
@@ -9,17 +9,22 @@ metadata:
 
 # Design
 
-The design step: derive the complete design of the PRD from
-`specs/requirements/prd.md`, cell-first. The design covers EVERY story the
-PRD defines. The build gate checks the result mechanically — every story
-claimed by some component's design.json, every component enriched — so the
-way to a clean Build is to follow the order below.
+The design step: derive the complete design of the requirements corpus,
+cell-first. The design covers EVERY story the PRD defines. The build gate
+checks the result mechanically — every story claimed by some component's
+design.json, every component enriched — so the way to a clean Build is to
+follow the order below.
 
-## The PRD is the brief
+## The requirements corpus is the brief
 
-Design FROM `specs/requirements/prd.md`, and do not widen or narrow the scope:
-what the PRD says is what gets designed. A missing or empty PRD means the user
-needs `/start` first — stop and say so.
+Design FROM the requirements corpus: `specs/requirements/prd.md` is the
+spine, and every other document beside it (domain model, business rules,
+integrations, feature files) is binding context the design must honor — the
+ER model in `specs/design/domain-model.md` comes from the domain model where
+one exists, not from invention. Do not interview the user again and do not
+widen or narrow the scope: what the requirements say is what gets designed. A missing or
+empty PRD means the user needs `/start` (or an import) first — stop and say
+so.
 
 **Ask at design altitude.** A call this step has to make and only the user can
 settle — which provider, which of two shapes the PRD deliberately left open —
@@ -135,14 +140,30 @@ turn — apply them directly, and load one only if you find you do not have it.
 6. **Per-component artifacts** — every `service` gets `openapi.yaml`
    (`openapi-conventions`); every `web-application` gets `wireframes.dsl`
    (`wireframes`).
-7. **Validation criteria** (`validation-criteria`) — mint
-   `specs/validation/validation-criteria.json` LAST. A design without its
-   acceptance oracle is unfinished — never skip this.
+7. **Grants pass** (`security-design`) — re-read `specs/design/security.json`
+   now that the screens and the operations exist. Step 5 wrote each role's
+   `grants` against a design it could only intend; the operations the screens
+   in each role's flow load are decidable only here. Walk each flow, open the
+   contract behind each screen, and make sure the role holds the handle of the
+   operation each screen loads. Re-emit the file only if a grant changes. Skip
+   the step only when step 5 wrote no security.json at all. No gate refuses a
+   role that is one handle short — the build's mock walk is what catches it, as
+   a hidden screen — so this pass is where it is cheap.
+8. **The acceptance oracle** — mint it LAST, and mint BOTH halves. A design
+   without one is unfinished — never skip this.
+   - `validation-criteria` → `specs/validation/validation-criteria.json`
+   - `acceptance-criteria` → `specs/acceptance/<slug>.feature`
+
+   Two documents, deliberately: the same requirement decomposed two ways. Both
+   are authored from the PRD alone, so they are independent of each other and of
+   everything above — emit them in one step. A design that produced only one of
+   them is incomplete.
 
 Order binds only where a step reads an earlier one's result: the cell before
-enrichment (the platform scaffolds each design.json from it), and
+enrichment (the platform scaffolds each design.json from it),
 domain-model.md's ER model before `openapi.yaml` (those entities become the
-API schemas).
+API schemas), and the per-component artifacts before the security
+reconciliation (it is those files it reconciles against).
 Everything else is independent — emit independent artifacts as parallel calls
 in ONE step, not a step each.
 
