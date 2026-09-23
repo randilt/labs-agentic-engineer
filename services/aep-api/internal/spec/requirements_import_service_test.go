@@ -210,6 +210,7 @@ func (f *fakeReqFiles) Apply(_ context.Context, _, _ string, req ApplyRequest) (
 func (f *fakeReqFiles) PutReferences(context.Context, string, string, []gitfs.ReferenceDoc) error {
 	return nil
 }
+func (f *fakeReqFiles) SetRegisteredResourceReader(RegisteredResourceReader) {}
 
 func TestRequirementsImport_Happy(t *testing.T) {
 	t.Parallel()
