@@ -26,10 +26,18 @@ an AEP project. **Stop immediately.** Tell the user to run `/start` (or
   legacy app.
 - No framework or language names in `prd.md` (product altitude only — see
   `prd-contract`).
-- No source files copied into the bundle. Verbatim fenced blocks are allowed
-  **only** for lookup tables, rate tables, and formulas that cannot be
-  losslessly prosified, and only inside `business-rules.md`, labelled as
-  reference values — not design constraints.
+- No whole files or modules copied into the bundle — never vendor source
+  (ADR-0020). The only exception, and only inside `business-rules.md`,
+  labelled as reference material rather than a design constraint:
+  - Lookup tables, rate tables, and formulas that cannot be losslessly
+    prosified — verbatim, as reference values.
+  - A non-trivial function's exact logic — a multi-branch calculation, a
+    precedence or tie-break rule, a state machine, rounding or an edge case
+    a "when/then" line would flatten. Default to **pseudocode**: short,
+    language-neutral steps that name no framework. Fall back to a verbatim
+    excerpt of the function itself — never the file or its surrounding
+    wiring — only when pseudocode would still lose precision the rebuild
+    needs (exact arithmetic, a specific library call, a regex).
 - Do not invent architecture. The bundle is requirements; `/design` in AEP
   owns structure.
 
@@ -52,6 +60,10 @@ Read-only walk of the legacy tree. Capture facts — do not ask yet:
 - Auth wiring (who signs in, roles, IdP if any)
 - Outbound calls (HTTP, queues, email, payment, …) by capability
 - Config knobs and feature flags that change product behaviour
+- Functions whose logic is not obvious from name or call site — calculations,
+  precedence/tie-break rules, state machines, retry/backoff, validation with
+  several branches — worth capturing exactly, not just described (see the
+  `business-rules.md` Logic shape in `references/bundle-contract.md`)
 - Obvious dead or unused paths
 
 Prefer deterministic tools (`find`, `rg`, language-aware search). Do not
@@ -91,11 +103,15 @@ recommended answer, and tag each `*assumed*` where it lands.
 ### 4. Write
 
 Write `.aep/requirements/` exactly as `references/bundle-contract.md`
-specifies:
+specifies. AE never sees the legacy repository — only this bundle — so every
+document must be self-contained; a `path:line` citation is for a human
+auditor, never a stand-in for the content itself:
 
 - `prd.md` — required; `prd-contract` section order and story numbering
 - `domain-model.md` — entities, fields, relations, invariants
-- `business-rules.md` — load-bearing rules with `path:line` provenance
+- `business-rules.md` — load-bearing rules with `path:line` provenance;
+  where a rule's logic is non-trivial, add its exact steps (pseudocode by
+  default) so AE can reproduce the behaviour, not just its intent
 - `integrations.md` — external systems by capability
 
 Target ~8 KB per document. Prefer cutting depth over padding.
